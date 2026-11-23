@@ -149,7 +149,16 @@ async function saveCfg(o) { try { await fs.setDoc(fs.doc(db, "cfg", "du-an"), { 
 
 // ===================== Ngày, giá trị của một cấu kiện =====================
 // ngày của công tác k (b/v/c) cho cấu kiện id trong hạng mục hm (chế độ A: VK, CT theo BT)
-function dateK(hm, id, k) { const D = DATES[hm] || {}, r = rootOf(id); if (k === "b" || cfgOf(hm).mode === "A") return (D.b || {})[r] || null; return (D[k] || {})[r] || null; }
+// ngày hiệu lực của công tác k (b / v / c / vc) – VK, CT: ngày riêng nếu có (chế độ B), không thì theo ngày đổ BT
+function dateK(hm, id, k) {
+  const D = DATES[hm] || {}, r = rootOf(id), bt = (D.b || {})[r] || null;
+  if (k === "b") return bt;
+  if (k === "vc") { const v = dateK(hm, id, "v"), c = dateK(hm, id, "c"); return v && c ? (v > c ? v : c) : null; }
+  if (cfgOf(hm).mode === "A") return bt;
+  const own = (D[k] || {})[r] || null;            // ngày riêng: giữ nếu sớm hơn ngày đổ BT (đã báo ở kỳ trước thì ở lại kỳ đó)
+  return own && bt ? (own < bt ? own : bt) : (own || bt);
+}
+const ownDate = (hm, id, k) => ((DATES[hm] || {})[k] || {})[rootOf(id)] || null;
 function priceOf(hm, it) {   // đơn giá (đã nhân hệ số) theo cấu kiện gốc
   const by = (KL[hm] || {}).by || {}, p = by[rootOf(it.id)] || it, k = cfgOf(hm).k, lot = String(it.loai).startsWith("Lot");
   return { b: lot ? (p.gl || 0) * k.lot : (p.gb || 0) * k.bt, v: (p.gv || 0) * k.vk, c: (p.gc || 0) * k.ct };
@@ -159,8 +168,9 @@ const ctOf = (it) => it.ct || 0;
 // ===================== Trạng thái giao diện =====================
 let HM = null, ITEMS = [], BYID = {}, G = null, P = null, vb = null, view = "vMap", WORK = "b";
 const sel = new Set(); let multi = false, boxMode = false, listN = 300;
-const WN = { b: "Bê tông", v: "Ván khuôn", c: "Cốt thép" };
-const work = () => (HM && cfgOf(HM.id).mode === "B") ? WORK : "b";
+const WN = { b: "Bê tông", v: "Ván khuôn", c: "Cốt thép", vc: "VK + CT" };
+const work = () => WORK;                                                   // chế độ tô màu đang xem
+const wkind = () => (HM && cfgOf(HM.id).mode === "B") ? WORK : "b";         // công tác được ghi ngày
 const dW = (id) => HM ? dateK(HM.id, id, work()) : null;
 const per = () => ({ a: $("dFrom").value || "0000-01-01", b: $("dTo").value || "9999-12-31" });
 function status(d) { const { a, b } = per(); if (!d || d > b) return 0; return d < a ? 1 : 2; }
@@ -174,7 +184,7 @@ function renderTitle() {
 }
 function renderModeUI() {
   const B = HM && cfgOf(HM.id).mode === "B";
-  $("workWrap").style.display = B && view !== "vRep" ? "" : "none";
+  $("workWrap").style.display = view !== "vRep" ? "" : "none";
   $("hmCfgBtn").hidden = !(HM && lvHM(HM.id) >= 1);
   if (HM) { const c = cfgOf(HM.id); $("hmCfgBtn").textContent = `Hệ số & chế độ (${c.mode === "B" ? "ngày riêng" : "theo BT"})`; }
 }
@@ -343,6 +353,8 @@ $("clrBtn").onclick = () => { sel.clear(); refreshSel(); };
 
 // ===================== Khối lượng & ô nhập ngày =====================
 const QTY = { b: (i) => i.v || 0, v: (i) => vkOf(i), c: (i) => ctOf(i) };
+// các cột khối lượng hiện ở bảng bên phải theo chế độ màu
+const QCOL = { b: [["b", "m³", 3]], v: [["v", "m²", 2]], c: [["c", "kg", 0]], vc: [["v", "m²", 2], ["c", "kg", 0]] };
 const UNIT = { b: "m³", v: "m²", c: "kg" };
 const money = (v) => nf(v, 0);
 function withSubs(ids) { const set = new Set(ids); return ITEMS.filter((i) => set.has(rootOf(i.id))); }
@@ -353,43 +365,49 @@ function sum(list, hm = HM && HM.id) {
   return s;
 }
 function assignHTML(where) {
-  const ids = [...sel], its = ids.map((i) => BYID[i]).filter(Boolean), s = sum(withSubs(ids)), w = canEdit(), k = work(), B = cfgOf(HM.id).mode === "B";
+  const ids = [...sel], its = ids.map((i) => BYID[i]).filter(Boolean), s = sum(withSubs(ids)), w = canEdit(), B = cfgOf(HM.id).mode === "B", k = wkind();
   if (!its.length) return `<div class="assign"><p class="empty" style="margin:0">${where === "map" ? "Bấm một cấu kiện (Ctrl/Shift hoặc “Chọn nhiều” để chọn thêm, “Quét chọn” để khoanh vùng)" : "Đánh dấu hộp kiểm ở các dòng"}${w ? " rồi nhập ngày." : ". Bạn chỉ có quyền xem hạng mục này."}</p></div>`;
-  const ds = [...new Set(its.map((i) => dW(i.id) || ""))];
+  const ds = [...new Set(its.map((i) => dateK(HM.id, i.id, k) || ""))];
   const cnt = {}; its.forEach((i) => (cnt[i.ten] = (cnt[i.ten] || 0) + 1));
   const def = ds.length === 1 && ds[0] ? ds[0] : ($("dTo").value && $("dTo").value <= today() ? $("dTo").value : today());
-  const lab = B ? `ngày ${WN[k].toLowerCase()}` : "ngày đổ BT (VK, CT theo BT)";
+  const own = k === "b" ? ds.some(Boolean) : its.some((i) => (k === "vc" ? ["v", "c"] : [k]).some((x) => ownDate(HM.id, i.id, x)));
+  const lab = k === "b" ? (B ? "ngày đổ BT" : "ngày đổ BT (VK, CT theo BT)") : `ngày ${WN[k]}`;
+  const hint = !B && work() !== "b" ? `<div class="names">Chế độ A: chỉ ghi ngày đổ BT – VK, CT tự tính xong cùng ngày. Muốn ghi ngày VK/CT riêng: Hệ số & chế độ → B.</div>`
+    : B && k !== "b" ? `<div class="names">Chưa ghi ngày riêng thì ${WN[k]} tính xong cùng ngày đổ BT.</div>` : "";
   return `<div class="assign"><div style="display:flex;gap:14px;flex-wrap:wrap"><div><div class="empty">Đã chọn</div><div class="big">${its.length}</div></div><div><div class="empty">Bê tông</div><div class="big">${nf(s.v)} m³</div></div><div><div class="empty">Ván khuôn</div><div class="big">${nf(s.vk, 2)} m²</div></div><div><div class="empty">Cốt thép</div><div class="big">${nf(s.ct, 0)} kg</div></div><div><div class="empty">Giá trị</div><div class="big">${money(s.gt)} đ</div></div></div>
-  <div class="names">${Object.entries(cnt).map(([x, n]) => esc(x) + (n > 1 ? " ×" + n : "")).join(", ")} · ${esc(lab)}: ${ds.length > 1 ? "<b>nhiều ngày khác nhau</b>" : ds[0] ? "<b>" + fd(ds[0]) + "</b>" : "<b>chưa có</b>"}</div>
-  ${w ? `<div class="acts"><input type="date" class="aDate" value="${def}" aria-label="Ngày"><button class="btn pri aSet">Ghi ${B ? "ngày " + WN[k].toLowerCase() : "ngày đổ BT"}</button><button class="btn aClr"${ds.some(Boolean) ? "" : " disabled"}>Xóa ngày</button></div>` : ""}</div>`;
+  <div class="names">${Object.entries(cnt).map(([x, n]) => esc(x) + (n > 1 ? " ×" + n : "")).join(", ")} · ${esc(lab)}: ${ds.length > 1 ? "<b>nhiều ngày khác nhau</b>" : ds[0] ? "<b>" + fd(ds[0]) + "</b>" : "<b>chưa có</b>"}</div>${hint}
+  ${w ? `<div class="acts"><input type="date" class="aDate" value="${def}" aria-label="Ngày"><button class="btn pri aSet">Ghi ${esc(lab.replace(" (VK, CT theo BT)", ""))}</button><button class="btn aClr"${own ? "" : " disabled"}>${k === "b" ? "Xóa ngày BT" : "Xóa ngày riêng"}</button></div>` : ""}</div>`;
 }
 function bindAssign(root) {
   const b = root.querySelector(".aSet"); if (!b) return;
-  b.onclick = () => { const d = root.querySelector(".aDate").value; if (!d) return; const p = {}; sel.forEach((id) => (p[rootOf(id)] = d)); setDates(HM.id, p, work()); flash(b, "Đã ghi ✓"); };
-  root.querySelector(".aClr").onclick = () => { const p = {}; sel.forEach((id) => (p[rootOf(id)] = null)); setDates(HM.id, p, work()); };
+  const kinds = () => { const k = wkind(); return k === "vc" ? ["v", "c"] : [k]; };
+  b.onclick = async () => { const d = root.querySelector(".aDate").value; if (!d) return; const p = {}; sel.forEach((id) => (p[rootOf(id)] = d)); for (const k of kinds()) await setDates(HM.id, p, k); flash(b, "Đã ghi ✓"); };
+  root.querySelector(".aClr").onclick = async () => { const p = {}; sel.forEach((id) => (p[rootOf(id)] = null)); for (const k of kinds()) await setDates(HM.id, p, k); };
 }
 function renderAside() {
   if (!HM) return;
   if (!P) { $("aside").innerHTML = `<h2>${esc(HM.name)}</h2>${assignHTML("map")}`; bindAssign($("aside")); return; }
-  const k = work(), all = ITEMS.filter((i) => (BYID[rootOf(i.id)] || {}).mb === P.id);
-  const g = [0, 1, 2].map(() => ({ n: 0, q: 0, gt: 0 })), T = { n: 0, q: 0, gt: 0 }, { a, b } = per();
-  all.forEach((i) => { const st = status(dateK(HM.id, i.id, k)), q = QTY[k](i), val = q * priceOf(HM.id, i)[k], one = String(i.id).includes(".") ? 0 : 1;
-    [g[st], T].forEach((o) => { o.n += one; o.q += q; o.gt += val; }); });
-  const lab = ["Chưa thi công", "Xong trước kỳ", "Xong trong kỳ"];
-  let h = `<h2>${esc(planLabel(P))}</h2><p class="empty" style="margin:0">${esc(HM.name)} · ${P._its.length} cấu kiện trên mặt bằng${cfgOf(HM.id).mode === "B" ? " · đang xem: <b>" + WN[k] + "</b>" : ""}</p>
+  const k = work(), cols = QCOL[k], all = ITEMS.filter((i) => (BYID[rootOf(i.id)] || {}).mb === P.id);
+  const mk = () => ({ n: 0, q: cols.map(() => 0), gt: 0 }), g = [mk(), mk(), mk()], T = mk(), { a, b } = per();
+  all.forEach((i) => { const st = status(dateK(HM.id, i.id, k)), pr = priceOf(HM.id, i), one = String(i.id).includes(".") ? 0 : 1;
+    [g[st], T].forEach((o) => { o.n += one; cols.forEach(([c], j) => { const q = QTY[c](i); o.q[j] += q; o.gt += q * pr[c]; }); }); });
+  const lab = ["Chưa xong", "Xong trước kỳ", "Xong trong kỳ"];
+  let h = `<h2>${esc(planLabel(P))}</h2><p class="empty" style="margin:0">${esc(HM.name)} · ${P._its.length} cấu kiện trên mặt bằng · màu: <b>${k === "b" ? "Đã đổ bê tông" : k === "vc" ? "Xong VK + CT" : WN[k]}</b></p>
   <h3>Chọn${canEdit() ? " và nhập ngày" : " cấu kiện"}</h3>${assignHTML("map")}`;
   const one = sel.size === 1 && BYID[[...sel][0]];
   if (one) { const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it);
+    const dt = (x) => { const e = dateK(HM.id, it.id, x), o = x === "b" ? e : ownDate(HM.id, it.id, x); return e ? fd(e) + (x !== "b" && e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : "–"; };
     h += `<h3>Chi tiết cấu kiện</h3><div class="kv"><span>ID / trục</span><span>${esc(it.id)} · ${esc(it.truc)}</span><span>Loại</span><span>${esc(LN[it.loai] || it.loai)} ${esc(tangName(it.tang))}</span>
     <span>Dài × rộng × cao</span><span>${[it.dai, it.rong, it.cao].map((v) => v == null ? "–" : nf(v, 2)).join(" × ")} m</span>
     <span>Thể tích BT</span><span><b>${nf(it.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(vkOf(it), 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(ctOf(it), 1)} kg × ${money(p.c)}</span>
-    ${["b", "v", "c"].map((x) => `<span>Ngày ${WN[x].toLowerCase()}</span><span>${fd(dateK(HM.id, it.id, x)) || "–"}</span>`).join("")}
+    ${["b", "v", "c"].map((x) => `<span>Ngày ${WN[x].toLowerCase()}</span><span>${dt(x)}</span>`).join("")}
     ${sb.map((x) => `<span>${esc(x.id)} ${esc(x.ten)}</span><span>${nf(x.v)} m³</span>`).join("")}</div>`; }
-  h += `<h3>${WN[k]} · kỳ ${a > "0001" ? fd(a) : "đầu"} → ${b < "9999" ? fd(b) : "nay"} · mặt bằng này</h3><table class="leg"><tr><td></td><td class="n">SL</td><td class="n">${UNIT[k]}</td><td class="n">Giá trị (đ)</td></tr>
-  ${[1, 2, 0].map((st) => `<tr><td><span class="sw" style="background:${COL[st]}"></span>${lab[st]}</td><td class="n">${g[st].n}</td><td class="n">${nf(g[st].q, k === "c" ? 0 : 3)}</td><td class="n">${money(g[st].gt)}</td></tr>`).join("")}
-  <tr><td><b>Cộng</b></td><td class="n"><b>${T.n}</b></td><td class="n"><b>${nf(T.q, k === "c" ? 0 : 3)}</b></td><td class="n"><b>${money(T.gt)}</b></td></tr></table>
-  <div class="meter"><i style="width:${(g[1].q / (T.q || 1)) * 100}%;background:var(--done)"></i><i style="width:${(g[2].q / (T.q || 1)) * 100}%;background:var(--now)"></i></div>
-  <p class="empty">Lũy kế đến cuối kỳ: ${nf(((g[1].q + g[2].q) / (T.q || 1)) * 100, 1)}% khối lượng ${WN[k].toLowerCase()}${T.gt ? "" : " · chưa có đơn giá (sheet GAN_THEP)"}</p>`;
+  const qc = (o) => cols.map(([, , d], j) => `<td class="n">${nf(o.q[j], d)}</td>`).join("");
+  h += `<h3>Kỳ ${a > "0001" ? fd(a) : "đầu"} → ${b < "9999" ? fd(b) : "nay"} · mặt bằng này</h3><table class="leg"><tr><td></td><td class="n">SL</td>${cols.map(([, u]) => `<td class="n">${u}</td>`).join("")}<td class="n">Giá trị (đ)</td></tr>
+  ${[1, 2, 0].map((st) => `<tr><td><span class="sw" style="background:${COL[st]}"></span>${lab[st]}</td><td class="n">${g[st].n}</td>${qc(g[st])}<td class="n">${money(g[st].gt)}</td></tr>`).join("")}
+  <tr><td><b>Cộng</b></td><td class="n"><b>${T.n}</b></td>${qc(T)}<td class="n"><b>${money(T.gt)}</b></td></tr></table>
+  <div class="meter"><i style="width:${(g[1].n / (T.n || 1)) * 100}%;background:var(--done)"></i><i style="width:${(g[2].n / (T.n || 1)) * 100}%;background:var(--now)"></i></div>
+  <p class="empty">Lũy kế đến cuối kỳ: ${nf(((g[1].gt + g[2].gt) / (T.gt || 1)) * 100, 1)}% giá trị · ${g[1].n + g[2].n}/${T.n} cấu kiện${T.gt ? "" : " · chưa có đơn giá (sheet GAN_THEP)"}</p>`;
   $("aside").innerHTML = h; bindAssign($("aside"));
 }
 
@@ -503,7 +521,7 @@ function renderList() {
   if (view !== "vList" || !HM) return;
   const f = listItems(), allOn = f.length && f.every((i) => sel.has(i.id)), B = cfgOf(HM.id).mode === "B";
   const agg = {}; ITEMS.forEach((i) => { const r = rootOf(i.id), p = priceOf(HM.id, i); const o = agg[r] || (agg[r] = { v: 0, vk: 0, ct: 0, gt: 0 }); o.v += i.v || 0; o.vk += vkOf(i); o.ct += ctOf(i); o.gt += (i.v || 0) * p.b + vkOf(i) * p.v + ctOf(i) * p.c; });
-  const dcell = (id, k) => { const d = dateK(HM.id, id, k); return d ? `<span class="sw" style="background:${COL[status(d)]}"></span>${fd(d)}` : ""; };
+  const dcell = (id, k) => { const d = dateK(HM.id, id, k); if (!d) return ""; const fb = k !== "b" && d !== ownDate(HM.id, id, k); return `<span class="sw" style="background:${COL[status(d)]}"></span>${fd(d)}${fb ? ' <small class="empty">BT</small>' : ""}`; };
   $("listTbl").innerHTML = `<thead><tr><th class="c"><input type="checkbox" id="chkAll" ${allOn ? "checked" : ""} aria-label="Chọn tất cả dòng đang lọc"></th><th>ID</th><th>Cấu kiện</th><th>Tên</th><th>Trục</th><th>Ngày BT</th>${B ? "<th>Ngày VK</th><th>Ngày CT</th>" : ""}<th>BT m³</th><th>VK m²</th><th>CT kg</th><th>Giá trị (đ)</th><th>Mặt bằng</th></tr></thead><tbody>${f.slice(0, listN).map((i) => { const on = sel.has(i.id), o = agg[i.id];
     return `<tr class="${on ? "chk" : ""}" data-id="${esc(i.id)}"><td class="c"><input type="checkbox" ${on ? "checked" : ""} aria-label="Chọn ${esc(i.ten)}"></td><td>${esc(i.id)}</td><td>${esc(rowLabel(rowKey(i)))}</td><td>${esc(i.ten)}</td><td>${esc(i.truc)}</td><td>${dcell(i.id, "b")}</td>${B ? `<td>${dcell(i.id, "v")}</td><td>${dcell(i.id, "c")}</td>` : ""}<td class="n">${nf(o.v)}</td><td class="n">${nf(o.vk, 2)}</td><td class="n">${nf(o.ct, 0)}</td><td class="n">${money(o.gt)}</td><td>${i.mb && G && G.shapes[i.id] ? `<button class="edit" data-go="${esc(i.id)}">Xem</button>` : ""}</td></tr>`; }).join("")}</tbody>`;
   $("more").hidden = f.length <= listN; $("more").textContent = `Hiện thêm (còn ${f.length - listN} dòng)`;
@@ -540,18 +558,15 @@ $("hmCfgBtn").onclick = () => {
   ${[["lot", "BT lót"], ["bt", "Bê tông"], ["vk", "Ván khuôn"], ["ct", "Cốt thép"]].map(([k, l]) => `<label style="margin:0">${l}<input type="number" step="0.001" min="0" data-k="${k}" value="${c.k[k]}" style="width:100%"${dis}></label>`).join("")}</div>
   <label style="margin-top:16px">Chế độ theo dõi</label>
   <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="radio" name="md" value="A" ${c.mode === "A" ? "checked" : ""}${dis}> <span><b>A – VK, CT ăn theo bê tông:</b> chỉ nhập ngày đổ BT; ván khuôn, cốt thép tính xong cùng ngày.</span></label>
-  <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="radio" name="md" value="B" ${c.mode === "B" ? "checked" : ""}${dis}> <span><b>B – Ngày riêng:</b> nhập riêng ngày BT, ngày VK, ngày CT (chọn công tác ở thanh trên).</span></label>
-  <label id="cpWrap" style="display:none;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="cpBT" checked> Chép ngày BT sang VK, CT cho cấu kiện chưa có ngày</label>
+  <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="radio" name="md" value="B" ${c.mode === "B" ? "checked" : ""}${dis}> <span><b>B – Có ngày riêng:</b> ghi thêm ngày VK, CT, VK+CT riêng (chọn ở ô Hiển thị). Đổ BT thì VK, CT chưa có ngày riêng tự xong cùng ngày BT; ngày riêng sớm hơn BT giữ nguyên ở kỳ đó.</span></label>
   <div class="acts"><button class="btn" id="hcNo">Đóng</button>${w ? `<button class="btn pri" id="hcOk">Lưu</button>` : ""}</div></div></div>`;
   $("hcNo").onclick = () => ($("ovl").innerHTML = "");
-  $("ovl").querySelectorAll("[name=md]").forEach((r) => (r.onchange = () => ($("cpWrap").style.display = r.value === "B" && c.mode === "A" ? "flex" : "none")));
   if (w) $("hcOk").onclick = async () => {
     const k = {}; $("ovl").querySelectorAll("[data-k]").forEach((i) => (k[i.dataset.k] = num1(i.value)));
-    const mode = $("ovl").querySelector("[name=md]:checked").value, copy = mode === "B" && c.mode === "A" && $("cpBT").checked;
+    const mode = $("ovl").querySelector("[name=md]:checked").value;
     $("hcOk").disabled = true;
     try {
       await fs.setDoc(fs.doc(db, "hmcfg", HM.id), { k, mode, at: new Date().toISOString(), by: ME }, { merge: true });
-      if (copy) { const D = DATES[HM.id] || {}, bt = D.b || {}; for (const kk of ["v", "c"]) { const p = {}; Object.keys(bt).forEach((id) => { if (!(D[kk] || {})[id]) p[id] = bt[id]; }); if (Object.keys(p).length) await setDates(HM.id, p, kk); } }
       $("ovl").innerHTML = "";
     } catch (e) { $("hcOk").disabled = false; setNote("Không lưu được: " + (e.code === "permission-denied" ? "không có quyền (cần cập nhật quy tắc Firestore cho hmcfg)" : e.code)); }
   };
