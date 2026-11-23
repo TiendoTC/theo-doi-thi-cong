@@ -166,12 +166,23 @@ function priceOf(hm, it) {   // đơn giá (đã nhân hệ số) theo cấu ki�
 const ctOf = (it) => it.ct || 0;
 
 // ===================== Trạng thái giao diện =====================
-let HM = null, ITEMS = [], BYID = {}, G = null, P = null, vb = null, view = "vMap", WORK = "b";
+let HM = null, ITEMS = [], BYID = {}, G = null, P = null, vb = null, view = "vMap", WORK = "tq";
+try { WORK = localStorage.getItem("ttbt_work") || "tq"; } catch (e) {}
 const sel = new Set(); let multi = false, boxMode = false, listN = 300;
-const WN = { b: "Bê tông", v: "Ván khuôn", c: "Cốt thép", vc: "VK + CT" };
+const WN = { b: "Bê tông", v: "Ván khuôn", c: "Cốt thép", vc: "VK + CT", tq: "Tiến độ tổng hợp" };
 const work = () => WORK;                                                   // chế độ tô màu đang xem
-const wkind = () => (HM && cfgOf(HM.id).mode === "B") ? WORK : "b";         // công tác được ghi ngày
-const dW = (id) => HM ? dateK(HM.id, id, work()) : null;
+const wkind = () => (HM && cfgOf(HM.id).mode === "B" && WORK !== "tq") ? WORK : "b";   // công tác được ghi ngày
+// Tiến độ tổng hợp (tính đến cuối kỳ): 0 chưa làm · 1 có VK · 2 có CT · 3 xong VK+CT · 4 đã đổ BT; d = ngày quyết định trạng thái
+const STG = [["Chưa làm", "var(--none)"], ["Có ván khuôn", "#FFC000"], ["Có cốt thép", "#E03C31"], ["Xong VK + CT, chờ đổ BT", "#7030A0"], ["Đã đổ bê tông", "#00B050"]];
+function stageOf(hm, id) {
+  const { b } = per(), ok = (d) => d && d <= b ? d : null;
+  const bt = ok(dateK(hm, id, "b")); if (bt) return { s: 4, d: bt };
+  const v = ok(dateK(hm, id, "v")), c = ok(dateK(hm, id, "c"));
+  if (v && c) return { s: 3, d: v > c ? v : c };
+  if (v) return { s: 1, d: v }; if (c) return { s: 2, d: c };
+  return { s: 0, d: null };
+}
+const dW = (id) => !HM ? null : work() === "tq" ? stageOf(HM.id, id).d : dateK(HM.id, id, work());
 const per = () => ({ a: $("dFrom").value || "0000-01-01", b: $("dTo").value || "9999-12-31" });
 function status(d) { const { a, b } = per(); if (!d || d > b) return 0; return d < a ? 1 : 2; }
 const COL = ["var(--none)", "var(--done)", "var(--now)"];
@@ -188,7 +199,8 @@ function renderModeUI() {
   $("hmCfgBtn").hidden = !(HM && lvHM(HM.id) >= 1);
   if (HM) { const c = cfgOf(HM.id); $("hmCfgBtn").textContent = `Hệ số & chế độ (${c.mode === "B" ? "ngày riêng" : "theo BT"})`; }
 }
-$("workSel").onchange = () => { WORK = $("workSel").value; refreshAll(); };
+$("workSel").value = WORK;
+$("workSel").onchange = () => { WORK = $("workSel").value; try { localStorage.setItem("ttbt_work", WORK); } catch (e) {} refreshAll(); };
 function onHM() {
   const cur = HM && HMS.find((h) => h.id === HM.id);
   $("hmSel").innerHTML = HMS.length ? HMS.map((h) => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join("") : `<option value="">(chưa có hạng mục)</option>`;
@@ -250,9 +262,12 @@ function showPlan(id) {
 }
 function paint() {
   if (!P || !$("cks")) return;
+  const tq = work() === "tq", { a } = per();
   $("cks").querySelectorAll(".ck").forEach((el) => {
-    const id = el.dataset.id, st = status(dW(id));
-    el.style.fill = COL[st]; el.style.fillOpacity = st ? .85 : 1; el.classList.toggle("sel", sel.has(id));
+    const id = el.dataset.id;
+    if (tq) { const g = stageOf(HM.id, id); el.style.fill = STG[g.s][1]; el.style.fillOpacity = g.s ? .85 : 1; el.classList.toggle("inp", !!(g.d && g.d >= a)); }
+    else { const st = status(dW(id)); el.style.fill = COL[st]; el.style.fillOpacity = st ? .85 : 1; el.classList.remove("inp"); }
+    el.classList.toggle("sel", sel.has(id));
   });
   labels();
 }
@@ -261,7 +276,7 @@ function labels() {
   const W = P._B.w;
   g.innerHTML = P._its.map((it) => {
     const b = it._b, bw = b.x1 - b.x0, bh = b.y1 - b.y0, tall = bh > bw * 1.8, d = dW(it.id);
-    const t = m === "ten" ? it.ten : m === "id" ? it.id : m === "truc" ? it.truc : (d && status(d) ? fds(d) : "");
+    const t = m === "ten" ? it.ten : m === "id" ? it.id : m === "truc" ? it.truc : (d && (work() === "tq" || status(d)) ? fds(d) : "");
     if (!t) return "";
     const fsz = Math.max(W / 450, Math.min(W / 110, (tall ? bw : bh) * .55, ((tall ? bh : bw) * 1.6) / String(t).length));
     const cx = (b.x0 + b.x1) / 2, cy = -(b.y0 + b.y1) / 2;
@@ -372,8 +387,9 @@ function assignHTML(where) {
   const def = ds.length === 1 && ds[0] ? ds[0] : ($("dTo").value && $("dTo").value <= today() ? $("dTo").value : today());
   const own = k === "b" ? ds.some(Boolean) : its.some((i) => (k === "vc" ? ["v", "c"] : [k]).some((x) => ownDate(HM.id, i.id, x)));
   const lab = k === "b" ? (B ? "ngày đổ BT" : "ngày đổ BT (VK, CT theo BT)") : `ngày ${WN[k]}`;
-  const hint = !B && work() !== "b" ? `<div class="names">Chế độ A: chỉ ghi ngày đổ BT – VK, CT tự tính xong cùng ngày. Muốn ghi ngày VK/CT riêng: Hệ số & chế độ → B.</div>`
-    : B && k !== "b" ? `<div class="names">Chưa ghi ngày riêng thì ${WN[k]} tính xong cùng ngày đổ BT.</div>` : "";
+  const hint = !B && ["v", "c", "vc"].includes(work()) ? `<div class="names">Chế độ A: chỉ ghi ngày đổ BT – VK, CT tự tính xong cùng ngày. Muốn ghi ngày VK/CT riêng: Hệ số & chế độ → B.</div>`
+    : B && k !== "b" ? `<div class="names">Chưa ghi ngày riêng thì ${WN[k]} tính xong cùng ngày đổ BT.</div>`
+    : B && work() === "tq" ? `<div class="names">Đang ghi ngày đổ BT. Muốn ghi ngày VK, CT riêng: chọn Hiển thị → Ván khuôn / Cốt thép / Xong VK + CT.</div>` : "";
   return `<div class="assign"><div style="display:flex;gap:14px;flex-wrap:wrap"><div><div class="empty">Đã chọn</div><div class="big">${its.length}</div></div><div><div class="empty">Bê tông</div><div class="big">${nf(s.v)} m³</div></div><div><div class="empty">Ván khuôn</div><div class="big">${nf(s.vk, 2)} m²</div></div><div><div class="empty">Cốt thép</div><div class="big">${nf(s.ct, 0)} kg</div></div><div><div class="empty">Giá trị</div><div class="big">${money(s.gt)} đ</div></div></div>
   <div class="names">${Object.entries(cnt).map(([x, n]) => esc(x) + (n > 1 ? " ×" + n : "")).join(", ")} · ${esc(lab)}: ${ds.length > 1 ? "<b>nhiều ngày khác nhau</b>" : ds[0] ? "<b>" + fd(ds[0]) + "</b>" : "<b>chưa có</b>"}</div>${hint}
   ${w ? `<div class="acts"><input type="date" class="aDate" value="${def}" aria-label="Ngày"><button class="btn pri aSet">Ghi ${esc(lab.replace(" (VK, CT theo BT)", ""))}</button><button class="btn aClr"${own ? "" : " disabled"}>${k === "b" ? "Xóa ngày BT" : "Xóa ngày riêng"}</button></div>` : ""}</div>`;
@@ -387,6 +403,7 @@ function bindAssign(root) {
 function renderAside() {
   if (!HM) return;
   if (!P) { $("aside").innerHTML = `<h2>${esc(HM.name)}</h2>${assignHTML("map")}`; bindAssign($("aside")); return; }
+  if (work() === "tq") return renderAsideTQ();
   const k = work(), cols = QCOL[k], all = ITEMS.filter((i) => (BYID[rootOf(i.id)] || {}).mb === P.id);
   const mk = () => ({ n: 0, q: cols.map(() => 0), gt: 0 }), g = [mk(), mk(), mk()], T = mk(), { a, b } = per();
   all.forEach((i) => { const st = status(dateK(HM.id, i.id, k)), pr = priceOf(HM.id, i), one = String(i.id).includes(".") ? 0 : 1;
@@ -408,6 +425,35 @@ function renderAside() {
   <tr><td><b>Cộng</b></td><td class="n"><b>${T.n}</b></td>${qc(T)}<td class="n"><b>${money(T.gt)}</b></td></tr></table>
   <div class="meter"><i style="width:${(g[1].n / (T.n || 1)) * 100}%;background:var(--done)"></i><i style="width:${(g[2].n / (T.n || 1)) * 100}%;background:var(--now)"></i></div>
   <p class="empty">Lũy kế đến cuối kỳ: ${nf(((g[1].gt + g[2].gt) / (T.gt || 1)) * 100, 1)}% giá trị · ${g[1].n + g[2].n}/${T.n} cấu kiện${T.gt ? "" : " · chưa có đơn giá (sheet GAN_THEP)"}</p>`;
+  $("aside").innerHTML = h; bindAssign($("aside"));
+}
+
+function itemDetail() {
+  const one = sel.size === 1 && BYID[[...sel][0]]; if (!one) return "";
+  const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it);
+  const dt = (x) => { const e = dateK(HM.id, it.id, x), o = x === "b" ? e : ownDate(HM.id, it.id, x); return e ? fd(e) + (x !== "b" && e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : "–"; };
+  return `<h3>Chi tiết cấu kiện</h3><div class="kv"><span>ID / trục</span><span>${esc(it.id)} · ${esc(it.truc)}</span><span>Loại</span><span>${esc(LN[it.loai] || it.loai)} ${esc(tangName(it.tang))}</span>
+    <span>Dài × rộng × cao</span><span>${[it.dai, it.rong, it.cao].map((v) => v == null ? "–" : nf(v, 2)).join(" × ")} m</span>
+    <span>Thể tích BT</span><span><b>${nf(it.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(vkOf(it), 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(ctOf(it), 1)} kg × ${money(p.c)}</span>
+    ${["b", "v", "c"].map((x) => `<span>Ngày ${WN[x].toLowerCase()}</span><span>${dt(x)}</span>`).join("")}
+    ${sb.map((x) => `<span>${esc(x.id)} ${esc(x.ten)}</span><span>${nf(x.v)} m³</span>`).join("")}</div>`;
+}
+function renderAsideTQ() {
+  const all = ITEMS.filter((i) => (BYID[rootOf(i.id)] || {}).mb === P.id), { a, b } = per();
+  const g = STG.map(() => ({ n: 0, ni: 0, gt: 0 })), T = { n: 0, ni: 0, gt: 0, tot: 0 };
+  all.forEach((i) => {
+    const one = String(i.id).includes(".") ? 0 : 1, pr = priceOf(HM.id, i), st = stageOf(HM.id, i.id);
+    let done = 0; ["b", "v", "c"].forEach((c) => { const d = dateK(HM.id, i.id, c), q = QTY[c](i) * pr[c]; T.tot += q; if (d && d <= b) done += q; });
+    const inp = st.d && st.d >= a ? one : 0;
+    [g[st.s], T].forEach((o) => { o.n += one; o.ni += inp; o.gt += done; });
+  });
+  let h = `<h2>${esc(planLabel(P))}</h2><p class="empty" style="margin:0">${esc(HM.name)} · ${P._its.length} cấu kiện trên mặt bằng · màu: <b>Tiến độ tổng hợp</b> đến ${b < "9999" ? fd(b) : "nay"}</p>
+  <h3>Chọn${canEdit() ? " và nhập ngày" : " cấu kiện"}</h3>${assignHTML("map")}${itemDetail()}
+  <h3>Trạng thái đến ${b < "9999" ? fd(b) : "nay"} · viền đậm = làm trong kỳ ${a > "0001" ? fd(a) : ""}–${b < "9999" ? fd(b) : ""}</h3><table class="leg"><tr><td></td><td class="n">SL</td><td class="n">Trong kỳ</td><td class="n">Giá trị đã làm (đ)</td></tr>
+  ${[4, 3, 2, 1, 0].map((s) => `<tr><td><span class="sw" style="background:${STG[s][1]}"></span>${STG[s][0]}</td><td class="n">${g[s].n}</td><td class="n">${g[s].ni || ""}</td><td class="n">${money(g[s].gt)}</td></tr>`).join("")}
+  <tr><td><b>Cộng</b></td><td class="n"><b>${T.n}</b></td><td class="n"><b>${T.ni}</b></td><td class="n"><b>${money(T.gt)}</b></td></tr></table>
+  <div class="meter">${[4, 3, 2, 1].map((s) => `<i style="width:${(g[s].n / (T.n || 1)) * 100}%;background:${STG[s][1]}"></i>`).join("")}</div>
+  <p class="empty">Giá trị đã làm ${money(T.gt)} / ${money(T.tot)} đ (${nf((T.gt / (T.tot || 1)) * 100, 1)}%)${T.tot ? "" : " · chưa có đơn giá (sheet GAN_THEP)"}</p>`;
   $("aside").innerHTML = h; bindAssign($("aside"));
 }
 

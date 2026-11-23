@@ -44,7 +44,7 @@ main{flex:1;display:flex;min-height:0}
 #mapBox.drag{cursor:grabbing}#mapBox.boxm{cursor:crosshair}
 #map{position:absolute;inset:0;width:100%;height:100%}
 #map .ck{stroke:var(--cad);stroke-width:1.2;vector-effect:non-scaling-stroke;cursor:pointer;fill-rule:evenodd}
-#map .ck:hover{stroke:#ffb703;stroke-width:3}#map .ck.sel{stroke:#ff006e;stroke-width:3.5}
+#map .ck:hover{stroke:#ffb703;stroke-width:3}#map .ck.inp{stroke:#111;stroke-width:2.6}#map .ck.sel{stroke:#ff006e;stroke-width:3.5}
 #map .bg{fill:none;stroke:var(--cad);stroke-width:.8;vector-effect:non-scaling-stroke}
 #map .gd{fill:none;stroke:var(--cad2);stroke-width:.7;vector-effect:non-scaling-stroke}
 #map .ax{fill:none;stroke:var(--ax);stroke-width:.7;stroke-dasharray:14 4 2 4;vector-effect:non-scaling-stroke}
@@ -137,7 +137,7 @@ body.full .bar1{display:none!important}
   <label>Hạng mục <select id="hmSel"></select></label>
   <label>Mặt bằng <select id="mbSel"></select></label>
   <div class="seg" id="tabs"><button class="on" data-v="vMap">Theo dõi</button><button data-v="vRep">Báo cáo</button><button data-v="vList">Danh sách</button></div>
-  <label id="workWrap">Hiển thị <select id="workSel"><option value="b">Đã đổ bê tông</option><option value="v">Ván khuôn</option><option value="c">Cốt thép</option><option value="vc">Xong VK + CT</option></select></label>
+  <label id="workWrap">Hiển thị <select id="workSel"><option value="tq">Tiến độ tổng hợp</option><option value="b">Đã đổ bê tông</option><option value="v">Ván khuôn</option><option value="c">Cốt thép</option><option value="vc">Xong VK + CT</option></select></label>
   <span id="mapTools" style="display:contents">
     <label>Nhãn <select id="lbl"><option value="ten">Tên</option><option value="ngay">Ngày</option><option value="id">ID</option><option value="truc">Trục</option><option value="">Không</option></select></label>
     <button class="chip" id="multiBtn">Chọn nhiều</button>
@@ -193,6 +193,6 @@ body.full .bar1{display:none!important}
 </main>
 <div id="ovl"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script type="module" src="./app.js?v=6"></script>
+<script type="module" src="./app.js?v=7"></script>
 </body>
 </html>
