@@ -99,7 +99,8 @@ function syncNgay() {
     if (!subs.hcfg[k]) subs.hcfg[k] = fs.onSnapshot(fs.doc(db, "hmcfg", k), (d) => { HMCFG[k] = d.exists() ? d.data() : {}; refreshAll(); renderModeUI(); }, () => {});
   });
 }
-function setNote(t) { $("note").textContent = t; }
+let noteT = null;
+function setNote(t) { $("note").textContent = t || ""; clearTimeout(noteT); if (t && !/…$/.test(t)) noteT = setTimeout(() => ($("note").textContent = ""), 7000); }
 
 // ===================== Đọc / ghi dữ liệu =====================
 async function loadChunks(meta, kind) {
@@ -166,9 +167,9 @@ function status(d) { const { a, b } = per(); if (!d || d > b) return 0; return d
 const COL = ["var(--none)", "var(--done)", "var(--now)"];
 
 function renderTitle() {
-  const t = view === "vRep" ? "Báo cáo khối lượng & giá trị – " + repTitle() : "Theo dõi công tác thi công " + (P ? planLabel(P) : "") + (HM ? " " + HM.name : "");
-  $("title").textContent = t;
-  $("proj").innerHTML = `Công trình: <b>${esc(CFG.ten)}</b> · ${esc(CFG.dia)}${isOwner ? ' <button class="edit" id="editProj">Sửa</button>' : ""}${HM ? ` · <span class="tag">${esc(ROLE[["", "viewer", "editor", "admin"][lvHM(HM.id)]] || "")}</span>` : ""}`;
+  document.title = view === "vRep" ? "Báo cáo – " + repTitle() : (HM ? HM.name + (P ? " · " + planLabel(P) : "") + " – " : "") + "Theo dõi thi công";
+  $("proj").innerHTML = `<b>${esc(CFG.ten)}</b>${isOwner ? ' <button class="edit" id="editProj">Sửa</button>' : ""}`;
+  $("proj").title = CFG.ten + " · " + CFG.dia;
   const b = $("editProj"); if (b) b.onclick = editProj;
 }
 function renderModeUI() {
@@ -193,17 +194,21 @@ async function openHM(id) {
   const meta = HMS.find((h) => h.id === id); if (!meta) return;
   HM = meta; sel.clear(); try { localStorage.setItem("ttbt_hm", id); } catch (e) {}
   renderModeUI();
-  $("mapMsg").hidden = false; $("mapMsg").innerHTML = `<p class="empty">Đang tải ${esc(meta.name)}…</p>`;
+  // danh sách hạng mục có thể được gửi lại (bộ nhớ đệm → máy chủ): chỉ bỏ dở khi người dùng đã chọn hạng mục / phiên bản khác
+  const stale = () => !HM || HM.id !== meta.id || HM.v !== meta.v;
+  const msg = (t) => { $("mapMsg").hidden = false; $("mapMsg").innerHTML = `<p class="empty">${t}</p>`; };
+  msg(`Đang tải khối lượng ${esc(meta.name)}…`);
   try {
-    ITEMS = await getKL(meta); if (HM !== meta) return;
+    ITEMS = await getKL(meta); if (stale()) return;
     BYID = KL[meta.id].by; ITEMS.forEach((it, i) => (it._i = i));
-    G = await getGEO(meta); if (HM !== meta) return;
+    msg(`Đang tải mặt bằng ${esc(meta.name)}…`);
+    G = await getGEO(meta); if (stale()) return;
     $("mbSel").innerHTML = $("fsMb").innerHTML = G.plans.map((p) => `<option value="${esc(p.id)}">${esc(planLabel(p))}</option>`).join("");
     const firstDone = G.plans.find((p) => ITEMS.some((i) => i.mb === p.id && dW(i.id))) || G.plans[0];
     const keep = P && G.plans.find((p) => p.id === P.id);
-    if (G.plans.length) showPlan((keep || firstDone).id); else { $("map").innerHTML = ""; $("mapMsg").innerHTML = `<p class="empty">Hạng mục này không có mặt bằng – dùng tab Danh sách.</p>`; P = null; }
+    if (G.plans.length) showPlan((keep || firstDone).id); else { $("map").innerHTML = ""; msg("Hạng mục này không có mặt bằng – dùng tab Danh sách."); P = null; }
     initListFilters(); renderTitle(); refreshAll();
-  } catch (e) { $("mapMsg").innerHTML = `<p class="empty">Không tải được hạng mục: ${esc(e.message)}</p>`; }
+  } catch (e) { if (!stale()) msg(`Không tải được hạng mục: ${esc(e.message)} <button class="btn" id="retryHM">Thử lại</button>`); const rb = $("retryHM"); if (rb) rb.onclick = () => openHM(id); }
 }
 function showEmpty() {
   $("map").innerHTML = ""; $("mapMsg").hidden = false; P = null;

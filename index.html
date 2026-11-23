@@ -112,6 +112,16 @@ body.full main{height:100vh}
 body.full .fsbar{display:flex}
 .fsbar select,.fsbar .chip{background:var(--paper);box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .fsbar .chip.on{background:var(--blue)}
+.bar1{flex-wrap:nowrap!important;overflow-x:auto;gap:8px;padding:6px max(1.2vw,10px);scrollbar-width:thin}
+.bar1>*,#mapTools>*,#repTools>*{flex:none}
+.bar1 .btn,.bar1 .seg button{min-height:38px;padding:4px 12px}
+.bar1 select,.bar1 input[type=date]{min-height:38px;font-size:15px;padding:2px 8px}
+.bar1 label{white-space:nowrap}
+.pchip{font-size:13px;color:var(--mute);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pchip b{color:var(--ink)}
+#note{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#111827;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;z-index:25;max-width:90vw;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+#note:empty{display:none}
+body.full .bar1{display:none!important}
 </style>
 </head>
 <body>
@@ -122,42 +132,41 @@ body.full .fsbar{display:flex}
   <p id="loginErr" style="color:#c0392b"></p>
 </div></div>
 
-<header>
-  <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1"><h1 id="title">Theo dõi công tác thi công bê tông</h1><p class="sub" id="proj"></p></div>
-  <div class="me"><span id="meName"></span><span class="tag" id="meRole"></span><button class="btn" id="usersBtn" hidden>Người dùng</button><button class="btn" id="outBtn">Đăng xuất</button></div></div>
-</header>
-<div class="row">
+<div class="row bar1" id="bar1">
+  <span class="pchip" id="proj"></span>
   <label>Hạng mục <select id="hmSel"></select></label>
   <label>Mặt bằng <select id="mbSel"></select></label>
   <div class="seg" id="tabs"><button class="on" data-v="vMap">Theo dõi</button><button data-v="vRep">Báo cáo</button><button data-v="vList">Danh sách</button></div>
-  <span class="sp"></span>
-  <button class="btn" id="hmCfgBtn" hidden>Hệ số & chế độ</button>
-  <button class="btn" id="impBtn" hidden>Nhập Excel</button>
-  <button class="btn" id="restBtn" hidden title="Nạp ngày đổ từ file Excel đã xuất (sheet DanhSach)">Nạp ngày từ file</button>
-  <button class="btn" id="expBtn">Xuất Excel</button>
-  <input type="file" id="impFile" accept=".xlsx,.xlsm" hidden>
-  <input type="file" id="restFile" accept=".xlsx" hidden>
-</div>
-<div class="row" id="perRow">
-  <label>Kỳ từ <input type="date" id="dFrom"></label>
-  <label>đến <input type="date" id="dTo"></label>
-  <button class="chip" data-pre="day">Hôm nay</button>
-  <button class="chip" data-pre="week">Tuần (T7→T6)</button>
-  <button class="chip" data-pre="month">Tháng này</button>
-  <button class="chip" data-pre="all">Lũy kế</button>
-  <span class="vsep"></span>
   <label id="workWrap" style="display:none">Công tác <select id="workSel"><option value="b">Bê tông</option><option value="v">Ván khuôn</option><option value="c">Cốt thép</option></select></label>
   <span id="mapTools" style="display:contents">
-    <label>Nhãn <select id="lbl"><option value="ten">Tên</option><option value="ngay">Ngày đổ</option><option value="id">ID</option><option value="truc">Trục</option><option value="">Không</option></select></label>
+    <label>Nhãn <select id="lbl"><option value="ten">Tên</option><option value="ngay">Ngày</option><option value="id">ID</option><option value="truc">Trục</option><option value="">Không</option></select></label>
     <button class="chip" id="multiBtn">Chọn nhiều</button>
     <button class="chip" id="boxBtn" title="Kéo trái→phải: chọn trọn trong khung; phải→trái: chọn chạm khung">Quét chọn</button>
     <button class="chip" id="clrBtn">Bỏ chọn</button>
+    <span class="vsep"></span>
+    <button class="btn" id="hmCfgBtn" hidden>Hệ số & chế độ</button>
+    <button class="btn" id="impBtn" hidden>Nhập Excel</button>
+    <button class="btn" id="expBtn">Xuất Excel</button>
+    <button class="btn" id="restBtn" hidden title="Nạp ngày từ file Excel đã xuất (sheet DanhSach)">Nạp ngày từ file</button>
   </span>
   <span id="repTools" style="display:none">
+    <label>Kỳ từ <input type="date" id="dFrom"></label>
+    <label>đến <input type="date" id="dTo"></label>
+    <button class="chip" data-pre="day">Hôm nay</button>
+    <button class="chip" data-pre="week">Tuần (T7→T6)</button>
+    <button class="chip" data-pre="month">Tháng này</button>
+    <button class="chip" data-pre="all">Lũy kế</button>
     <button class="btn" id="scopeBtn">Hạng mục báo cáo ▾</button>
   </span>
-  <span class="sp"></span><span id="note"></span>
+  <span class="sp"></span>
+  <span class="me"><span id="meName"></span><span class="tag" id="meRole"></span></span>
+  <button class="btn" id="usersBtn" hidden>Người dùng</button>
+  <button class="btn" id="outBtn">Đăng xuất</button>
+  <input type="file" id="impFile" accept=".xlsx,.xlsm" hidden>
+  <input type="file" id="restFile" accept=".xlsx" hidden>
 </div>
+<span id="note" role="status"></span>
+<h1 id="title" hidden></h1>
 
 <main>
   <section class="view on" id="vMap">
@@ -184,6 +193,6 @@ body.full .fsbar{display:flex}
 </main>
 <div id="ovl"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script type="module" src="./app.js?v=3"></script>
+<script type="module" src="./app.js?v=5"></script>
 </body>
 </html>
