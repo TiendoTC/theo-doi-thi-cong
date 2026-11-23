@@ -125,6 +125,7 @@ aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
   <label>Mặt bằng <select id="mbSel"></select></label>
   <div class="seg" id="tabs"><button class="on" data-v="vMap">Theo dõi</button><button data-v="vRep">Báo cáo</button><button data-v="vList">Danh sách</button></div>
   <span class="sp"></span>
+  <button class="btn" id="hmCfgBtn" hidden>Hệ số & chế độ</button>
   <button class="btn" id="impBtn" hidden>Nhập Excel</button>
   <button class="btn" id="restBtn" hidden title="Nạp ngày đổ từ file Excel đã xuất (sheet DanhSach)">Nạp ngày từ file</button>
   <button class="btn" id="expBtn">Xuất Excel</button>
@@ -139,6 +140,7 @@ aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
   <button class="chip" data-pre="month">Tháng này</button>
   <button class="chip" data-pre="all">Lũy kế</button>
   <span class="vsep"></span>
+  <label id="workWrap" style="display:none">Công tác <select id="workSel"><option value="b">Bê tông</option><option value="v">Ván khuôn</option><option value="c">Cốt thép</option></select></label>
   <span id="mapTools" style="display:contents">
     <label>Nhãn <select id="lbl"><option value="ten">Tên</option><option value="ngay">Ngày đổ</option><option value="id">ID</option><option value="truc">Trục</option><option value="">Không</option></select></label>
     <button class="chip" id="multiBtn">Chọn nhiều</button>
@@ -146,7 +148,7 @@ aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
     <button class="chip" id="clrBtn">Bỏ chọn</button>
   </span>
   <span id="repTools" style="display:none">
-    <span class="seg" id="scope"><button class="on" data-s="cur">Hạng mục đang chọn</button><button data-s="all">Toàn dự án</button></span>
+    <button class="btn" id="scopeBtn">Hạng mục báo cáo ▾</button>
   </span>
   <span class="sp"></span><span id="note"></span>
 </div>
@@ -175,6 +177,6 @@ aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
 </main>
 <div id="ovl"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script type="module" src="./app.js?v=1"></script>
+<script type="module" src="./app.js?v=2"></script>
 </body>
 </html>
