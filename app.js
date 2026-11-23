@@ -198,7 +198,7 @@ async function openHM(id) {
     ITEMS = await getKL(meta); if (HM !== meta) return;
     BYID = KL[meta.id].by; ITEMS.forEach((it, i) => (it._i = i));
     G = await getGEO(meta); if (HM !== meta) return;
-    $("mbSel").innerHTML = G.plans.map((p) => `<option value="${esc(p.id)}">${esc(planLabel(p))}</option>`).join("");
+    $("mbSel").innerHTML = $("fsMb").innerHTML = G.plans.map((p) => `<option value="${esc(p.id)}">${esc(planLabel(p))}</option>`).join("");
     const firstDone = G.plans.find((p) => ITEMS.some((i) => i.mb === p.id && dW(i.id))) || G.plans[0];
     const keep = P && G.plans.find((p) => p.id === P.id);
     if (G.plans.length) showPlan((keep || firstDone).id); else { $("map").innerHTML = ""; $("mapMsg").innerHTML = `<p class="empty">Hạng mục này không có mặt bằng – dùng tab Danh sách.</p>`; P = null; }
@@ -218,7 +218,7 @@ function ring(a) { let s = ""; for (let i = 0; i < a.length; i += 2) s += (i ? "
 function boxOf(k) { let x0 = 1e12, y0 = 1e12, x1 = -1e12, y1 = -1e12; k.forEach((r) => { for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); y0 = Math.min(y0, r[i + 1]); y1 = Math.max(y1, r[i + 1]); } }); return { x0, y0, x1, y1 }; }
 function showPlan(id) {
   P = G.plans.find((p) => p.id === id) || G.plans[0]; if (!P) return;
-  $("mbSel").value = P.id; $("mapMsg").hidden = true;
+  $("mbSel").value = $("fsMb").value = P.id; $("mapMsg").hidden = true;
   [...sel].forEach((i) => { if ((BYID[i] || {}).mb !== P.id) sel.delete(i); });
   P._its = ITEMS.filter((i) => i.mb === P.id && G.shapes[i.id]);
   P._its.forEach((it) => (it._b = boxOf(G.shapes[it.id][0])));
@@ -272,7 +272,7 @@ function toPt(cx, cy) { const m = svg.getScreenCTM(); const p = svg.createSVGPoi
 const pts = new Map(); let drag = null, pinch = null;
 box.addEventListener("wheel", (e) => { if (!vb) return; e.preventDefault(); zoomAt(e.deltaY > 0 ? 1.18 : 1 / 1.18, e.clientX, e.clientY); }, { passive: false });
 box.addEventListener("pointerdown", (e) => {
-  if (!vb || e.target.closest(".zoom")) return;
+  if (!vb || e.target.closest(".zoom, .fsbar")) return;
   box.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pts.size === 1) drag = { x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y, moved: false, t: e.target, add: e.ctrlKey || e.shiftKey || e.metaKey };
   if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) }; drag = null; hideBox(); }
@@ -317,8 +317,22 @@ function pick(id, add) {
   if (multi || add) { sel.has(id) ? sel.delete(id) : sel.add(id); } else { const only = sel.size === 1 && sel.has(id); sel.clear(); if (!only) sel.add(id); }
   refreshSel();
 }
-$("multiBtn").onclick = () => { multi = !multi; $("multiBtn").classList.toggle("on", multi); };
-$("boxBtn").onclick = () => { boxMode = !boxMode; $("boxBtn").classList.toggle("on", boxMode); box.classList.toggle("boxm", boxMode); };
+$("multiBtn").onclick = () => { multi = !multi; $("multiBtn").classList.toggle("on", multi); $("fsMulti").classList.toggle("on", multi); };
+$("boxBtn").onclick = () => { boxMode = !boxMode; $("boxBtn").classList.toggle("on", boxMode); $("fsBox").classList.toggle("on", boxMode); box.classList.toggle("boxm", boxMode); };
+// ---------- Toàn màn hình: chỉ giữ bản vẽ + bảng bên phải ----------
+function setFull(on) {
+  if (on && view !== "vMap") tab("vMap");
+  document.body.classList.toggle("full", on);
+  try { if (on && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {}
+  setTimeout(fit, 120);
+}
+$("zfull").onclick = () => setFull(!document.body.classList.contains("full"));
+$("fsExit").onclick = () => setFull(false);
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && document.body.classList.contains("full")) { document.body.classList.remove("full"); setTimeout(fit, 120); } });
+$("fsMb").onchange = () => showPlan($("fsMb").value);
+$("fsMulti").onclick = () => $("multiBtn").click();
+$("fsBox").onclick = () => $("boxBtn").click();
+$("fsClr").onclick = () => $("clrBtn").click();
 $("clrBtn").onclick = () => { sel.clear(); refreshSel(); };
 
 

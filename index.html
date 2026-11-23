@@ -106,6 +106,12 @@ aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
 .utbl select{min-height:34px;font-size:14px;font-weight:500;padding:2px 6px}
 .utbl td,.utbl th{white-space:nowrap}
 .tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--soft);color:var(--blue);font-weight:600}
+body.full header,body.full .row{display:none!important}
+body.full main{height:100vh}
+.fsbar{position:absolute;left:12px;top:12px;display:none;gap:6px;flex-wrap:wrap;align-items:center;z-index:2;max-width:calc(100% - 80px)}
+body.full .fsbar{display:flex}
+.fsbar select,.fsbar .chip{background:var(--paper);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.fsbar .chip.on{background:var(--blue)}
 </style>
 </head>
 <body>
@@ -157,7 +163,8 @@ aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
   <section class="view on" id="vMap">
     <div id="mapBox"><svg id="map" xmlns="http://www.w3.org/2000/svg"></svg>
       <div class="ctr" id="mapMsg"><p class="empty">Đang tải dữ liệu…</p></div>
-      <div class="zoom"><button class="btn" id="zin" aria-label="Phóng to">+</button><button class="btn" id="zout" aria-label="Thu nhỏ">−</button><button class="btn" id="zfit" aria-label="Vừa màn hình">⤢</button></div>
+      <div class="zoom"><button class="btn" id="zin" aria-label="Phóng to">+</button><button class="btn" id="zout" aria-label="Thu nhỏ">−</button><button class="btn" id="zfit" aria-label="Vừa khung">⤢</button><button class="btn" id="zfull" title="Toàn màn hình (chỉ giữ bản vẽ và bảng bên phải)" aria-label="Toàn màn hình">⛶</button></div>
+      <div class="fsbar"><select id="fsMb" aria-label="Mặt bằng"></select><button class="chip" id="fsMulti">Chọn nhiều</button><button class="chip" id="fsBox">Quét chọn</button><button class="chip" id="fsClr">Bỏ chọn</button><button class="chip" id="fsExit">✕ Thoát toàn màn hình</button></div>
       <div class="hint">Lăn chuột: phóng · kéo: di chuyển · bấm cấu kiện để chọn (Ctrl/Shift: chọn thêm)</div>
     </div>
     <aside id="aside"></aside>
@@ -177,6 +184,6 @@ aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
 </main>
 <div id="ovl"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script type="module" src="./app.js?v=2"></script>
+<script type="module" src="./app.js?v=3"></script>
 </body>
 </html>
