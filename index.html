@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theo dõi thi công bê tông</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: công cụ hiện trường của QS – rõ ràng, chắc chắn, như tờ theo dõi thi công
+   IDEA: mặt bằng CAD theo dõi đổ bê tông – bấm cấu kiện, ghi ngày đổ
+   PICTURE: chính mặt bằng, tô màu theo kỳ báo cáo; bảng báo cáo kỳ như biểu mẫu nghiệm thu
+   COLOUR and TYPE: giấy trắng, xanh nút #1a56db, xanh lá = đã đổ, cam = đổ trong kỳ; Be Vietnam Pro
+   LAYOUT: tiêu đề + hộp chọn Hạng mục/Mặt bằng, thanh kỳ báo cáo, bản vẽ + bảng bên */
+:root{color-scheme:light dark;--bg:light-dark(#f3f5f9,#0f1420);--paper:light-dark(#fff,#161d2c);--ink:light-dark(#111827,#e6eaf2);--mute:light-dark(#5b6475,#9aa5ba);--line:light-dark(#d6dce6,#2a3448);--blue:light-dark(#1a56db,#6f9cf0);--cad:light-dark(#2b3140,#aeb8cc);--cad2:light-dark(#9aa3b3,#56617a);--ax:light-dark(#c0392b,#e0796e);--none:light-dark(#ffffff,#222b3d);--done:#00B050;--now:#FF9F1C;--soft:light-dark(#eef3fd,#1c2638)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Be Vietnam Pro",system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--paper);border-bottom:1px solid var(--line);padding:12px max(2vw,12px) 10px}
+header h1{font-size:20px;line-height:1.2;margin:0;font-weight:700;text-transform:uppercase;letter-spacing:.01em}
+header .sub{margin:2px 0 0;font-size:14px;color:var(--mute)}header .sub b{color:var(--ink);font-weight:600}
+.edit{border:0;background:none;color:var(--blue);cursor:pointer;font-size:13px;padding:2px 6px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px max(2vw,12px);background:var(--paper);border-bottom:1px solid var(--line)}
+.row label{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:14px}
+button,select,input{font:inherit;color:inherit}
+select,input[type=date],input[type=search],input[type=text]{min-height:40px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:4px 10px;font-size:16px}
+select{font-weight:600;color:var(--ink)}
+.btn{min-height:40px;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--paper);cursor:pointer;white-space:nowrap;font-size:14px}
+.btn:hover{border-color:var(--blue)}.btn.on,.btn.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.red{color:#c0392b}.btn.red.arm{background:#c0392b;color:#fff;border-color:#c0392b}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{border:0;border-radius:0;min-height:40px;padding:6px 16px;background:var(--paper);cursor:pointer;font-size:14px}
+.seg button+button{border-left:1px solid var(--line)}.seg button.on{background:var(--blue);color:#fff}
+.chip{min-height:34px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:13px;white-space:nowrap}
+.chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.sp{flex:1}.vsep{width:1px;height:28px;background:var(--line)}
+:focus-visible{outline:3px solid #ffb703;outline-offset:2px}
+#note{font-size:13px;color:var(--mute)}
+main{flex:1;display:flex;min-height:0}
+.view{display:none;flex:1;min-height:0}.view.on{display:flex}
+#mapBox{flex:1;position:relative;background:var(--paper);touch-action:none;cursor:grab}
+#mapBox.drag{cursor:grabbing}#mapBox.boxm{cursor:crosshair}
+#map{position:absolute;inset:0;width:100%;height:100%}
+#map .ck{stroke:var(--cad);stroke-width:1.2;vector-effect:non-scaling-stroke;cursor:pointer;fill-rule:evenodd}
+#map .ck:hover{stroke:#ffb703;stroke-width:3}#map .ck.sel{stroke:#ff006e;stroke-width:3.5}
+#map .bg{fill:none;stroke:var(--cad);stroke-width:.8;vector-effect:non-scaling-stroke}
+#map .gd{fill:none;stroke:var(--cad2);stroke-width:.7;vector-effect:non-scaling-stroke}
+#map .ax{fill:none;stroke:var(--ax);stroke-width:.7;stroke-dasharray:14 4 2 4;vector-effect:non-scaling-stroke}
+#map text{fill:var(--cad);font-family:"Be Vietnam Pro",sans-serif}
+#map .lb{fill:#111;font-weight:600;pointer-events:none;paint-order:stroke;stroke:#fff;stroke-width:.06em}
+#selbox{fill:rgba(26,86,219,.08);stroke:#1a56db;stroke-width:1.5;vector-effect:non-scaling-stroke}
+#selbox.cross{fill:rgba(0,176,80,.08);stroke:#00B050;stroke-dasharray:6 4}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
+.zoom .btn{width:42px;padding:0;font-size:18px}
+.hint{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--mute);background:var(--paper);padding:2px 8px;border-radius:6px}
+.empty{color:var(--mute);font-size:14px}
+.ctr{position:absolute;inset:0;display:grid;place-items:center;padding:20px;text-align:center}
+aside{width:360px;border-left:1px solid var(--line);background:var(--paper);overflow:auto;padding:14px 16px}
+aside h2{font-size:16px;margin:0 0 2px;overflow-wrap:anywhere}
+aside h3{font-size:13px;margin:18px 0 6px;color:var(--mute);font-weight:600}
+.leg{width:100%;border-collapse:collapse;font-size:13px}
+.leg td{padding:6px 4px;border-bottom:1px solid var(--line)}
+.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.sw{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--cad2);vertical-align:-2px;margin-right:6px}
+.meter{height:10px;border-radius:5px;background:var(--line);overflow:hidden;display:flex;margin:10px 0 4px}.meter i{display:block;height:100%}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}
+.kv>span:nth-child(odd){color:var(--mute)}.kv>span:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}
+.assign{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:8px}
+.assign .big{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.assign .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.names{font-size:12px;color:var(--mute);margin-top:6px;max-height:84px;overflow:auto}
+.page{flex:1;overflow:auto;padding:18px max(2vw,12px) 48px}
+.page h2{font-size:24px;margin:0 0 4px;line-height:1.15;text-wrap:balance}
+.page .lead{color:var(--mute);margin:0 0 14px;font-size:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:12px;margin:14px 0 22px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card .t{font-size:13px;color:var(--mute)}.card .v{font-size:clamp(20px,2.4vw,26px);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;background:var(--paper)}
+.tbl th,.tbl td{border:1px solid var(--line);padding:6px 8px}
+.tbl th{background:light-dark(#e8eef8,#1c2638);font-weight:600;position:sticky;top:0;z-index:1}
+.tbl tr.hm td{background:var(--soft);font-weight:700}
+.tbl tr.tot td{font-weight:700;background:light-dark(#f2f5fb,#1a2232)}
+.tbl tr.chk td{background:light-dark(#fff4e0,#2c2416)}
+.tbl td.c{text-align:center;width:40px}.tbl input[type=checkbox]{width:18px;height:18px;cursor:pointer}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:18px 0 8px}
+.tools b{font-size:16px}
+.stick{position:sticky;top:-18px;z-index:3;background:var(--bg);padding:10px 0}
+.ov{position:fixed;inset:0;background:rgba(10,15,25,.45);display:grid;place-items:center;z-index:20;padding:16px}
+.dlg{background:var(--paper);border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.dlg h2{margin:0 0 6px;font-size:20px}.dlg label{display:block;margin:12px 0 4px;font-size:14px;color:var(--mute)}
+.dlg input[type=text]{width:100%}.dlg .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+.dotrow{display:flex;gap:8px;align-items:center;margin:6px 0}.dotrow span{width:70px}
+.hmlist{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+.hmlist div{display:flex;align-items:center;gap:8px;padding:4px 0}.hmlist div span{flex:1}
+@media(max-width:900px){body{overflow:auto;height:auto}main{min-height:auto}#vMap{flex-direction:column}#mapBox{flex:none;height:55vh}aside{width:auto;border-left:0;border-top:1px solid var(--line)}.page{overflow:visible}.stick{top:0}}
+@media(max-width:600px){header h1{font-size:16px}.hint{display:none}.row{flex-wrap:nowrap;overflow-x:auto}.row>*{flex:none}.tbl{font-size:12px}}
+#login{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:30;padding:20px}
+#login .box{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:28px;max-width:420px;width:100%;text-align:center}
+#login h1{font-size:22px;margin:0 0 4px;text-transform:none}#login p{color:var(--mute);margin:6px 0 18px}
+.gbtn{display:inline-flex;align-items:center;gap:10px;min-height:46px;padding:8px 20px;border-radius:10px;border:1px solid var(--line);background:var(--paper);font-size:16px;font-weight:600;cursor:pointer}
+.gbtn:hover{border-color:var(--blue)}
+.me{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mute)}
+.utbl select{min-height:34px;font-size:14px;font-weight:500;padding:2px 6px}
+.utbl td,.utbl th{white-space:nowrap}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--soft);color:var(--blue);font-weight:600}
+</style>
+</head>
+<body>
+<div id="login"><div class="box">
+  <h1>Theo dõi thi công bê tông</h1>
+  <p id="loginMsg">Đăng nhập bằng tài khoản Google (Gmail) đã được cấp quyền.</p>
+  <button class="gbtn" id="gBtn"><svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Đăng nhập bằng Google</button>
+  <p id="loginErr" style="color:#c0392b"></p>
+</div></div>
+
+<header>
+  <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1"><h1 id="title">Theo dõi công tác thi công bê tông</h1><p class="sub" id="proj"></p></div>
+  <div class="me"><span id="meName"></span><span class="tag" id="meRole"></span><button class="btn" id="usersBtn" hidden>Người dùng</button><button class="btn" id="outBtn">Đăng xuất</button></div></div>
+</header>
+<div class="row">
+  <label>Hạng mục <select id="hmSel"></select></label>
+  <label>Mặt bằng <select id="mbSel"></select></label>
+  <div class="seg" id="tabs"><button class="on" data-v="vMap">Theo dõi</button><button data-v="vRep">Báo cáo</button><button data-v="vList">Danh sách</button></div>
+  <span class="sp"></span>
+  <button class="btn" id="impBtn" hidden>Nhập Excel</button>
+  <button class="btn" id="restBtn" hidden title="Nạp ngày đổ từ file Excel đã xuất (sheet DanhSach)">Nạp ngày từ file</button>
+  <button class="btn" id="expBtn">Xuất Excel</button>
+  <input type="file" id="impFile" accept=".xlsx,.xlsm" hidden>
+  <input type="file" id="restFile" accept=".xlsx" hidden>
+</div>
+<div class="row" id="perRow">
+  <label>Kỳ từ <input type="date" id="dFrom"></label>
+  <label>đến <input type="date" id="dTo"></label>
+  <button class="chip" data-pre="day">Hôm nay</button>
+  <button class="chip" data-pre="week">Tuần (T7→T6)</button>
+  <button class="chip" data-pre="month">Tháng này</button>
+  <button class="chip" data-pre="all">Lũy kế</button>
+  <span class="vsep"></span>
+  <span id="mapTools" style="display:contents">
+    <label>Nhãn <select id="lbl"><option value="ten">Tên</option><option value="ngay">Ngày đổ</option><option value="id">ID</option><option value="truc">Trục</option><option value="">Không</option></select></label>
+    <button class="chip" id="multiBtn">Chọn nhiều</button>
+    <button class="chip" id="boxBtn" title="Kéo trái→phải: chọn trọn trong khung; phải→trái: chọn chạm khung">Quét chọn</button>
+    <button class="chip" id="clrBtn">Bỏ chọn</button>
+  </span>
+  <span id="repTools" style="display:none">
+    <span class="seg" id="scope"><button class="on" data-s="cur">Hạng mục đang chọn</button><button data-s="all">Toàn dự án</button></span>
+  </span>
+  <span class="sp"></span><span id="note"></span>
+</div>
+
+<main>
+  <section class="view on" id="vMap">
+    <div id="mapBox"><svg id="map" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="ctr" id="mapMsg"><p class="empty">Đang tải dữ liệu…</p></div>
+      <div class="zoom"><button class="btn" id="zin" aria-label="Phóng to">+</button><button class="btn" id="zout" aria-label="Thu nhỏ">−</button><button class="btn" id="zfit" aria-label="Vừa màn hình">⤢</button></div>
+      <div class="hint">Lăn chuột: phóng · kéo: di chuyển · bấm cấu kiện để chọn (Ctrl/Shift: chọn thêm)</div>
+    </div>
+    <aside id="aside"></aside>
+  </section>
+  <section class="view" id="vRep"><div class="page" id="repPage"></div></section>
+  <section class="view" id="vList"><div class="page">
+    <h2>Danh sách cấu kiện – nhập ngày đổ</h2>
+    <p class="lead">Đánh dấu hộp kiểm rồi nhập ngày. Dùng cho cả cấu kiện không có hình trên mặt bằng. Phần trừ/cộng (x.1, x.2) đi theo ngày của cấu kiện x.</p>
+    <div class="stick"><div class="tools" style="margin:0 0 8px">
+      <input type="search" id="q" placeholder="Tìm tên, ID, trục…">
+      <select id="fGrp"></select>
+      <select id="fSt"><option value="">Mọi trạng thái</option><option value="no">Chưa đổ</option><option value="yes">Đã đổ</option><option value="in">Đổ trong kỳ</option></select>
+    </div><div id="listAssign"></div></div>
+    <div class="scroll"><table class="tbl" id="listTbl"></table></div>
+    <button class="btn" id="more" hidden style="margin-top:10px">Hiện thêm</button>
+  </div></section>
+</main>
+<div id="ovl"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script type="module" src="./app.js?v=1"></script>
+</body>
+</html>
