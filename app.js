@@ -151,14 +151,17 @@ async function saveCfg(o) { try { await fs.setDoc(fs.doc(db, "cfg", "du-an"), { 
 // ngày của công tác k (b/v/c) cho cấu kiện id trong hạng mục hm (chế độ A: VK, CT theo BT)
 // ngày hiệu lực của công tác k (b / v / c / vc) – VK, CT: ngày riêng nếu có (chế độ B), không thì theo ngày đổ BT
 function dateK(hm, id, k) {
-  const D = DATES[hm] || {}, r = rootOf(id), bt = (D.b || {})[r] || null;
+  const D = DATES[hm] || {}, r = keyOf(hm, id), bt = (D.b || {})[r] || null;
   if (k === "b") return bt;
   if (k === "vc") { const v = dateK(hm, id, "v"), c = dateK(hm, id, "c"); return v && c ? (v > c ? v : c) : null; }
   if (cfgOf(hm).mode === "A") return bt;
   const own = (D[k] || {})[r] || null;            // ngày riêng: giữ nếu sớm hơn ngày đổ BT (đã báo ở kỳ trước thì ở lại kỳ đó)
   return own && bt ? (own < bt ? own : bt) : (own || bt);
 }
-const ownDate = (hm, id, k) => ((DATES[hm] || {})[k] || {})[rootOf(id)] || null;
+const ownDate = (hm, id, k) => ((DATES[hm] || {})[k] || {})[keyOf(hm, id)] || null;
+// khóa lưu ngày: UID cố định (cột Y của DANH_SACH) nếu có, không thì ID cấu kiện gốc
+const ukey = (it) => it && it.uid ? "u" + it.uid : null;
+function keyOf(hm, id) { const r = rootOf(id), it = ((KL[hm] || {}).by || {})[r]; return ukey(it) || r; }
 function priceOf(hm, it) {   // đơn giá (đã nhân hệ số) theo cấu kiện gốc
   const by = (KL[hm] || {}).by || {}, p = by[rootOf(it.id)] || it, k = cfgOf(hm).k, lot = String(it.loai).startsWith("Lot");
   return { b: lot ? (p.gl || 0) * k.lot : (p.gb || 0) * k.bt, v: (p.gv || 0) * k.vk, c: (p.gc || 0) * k.ct };
@@ -397,8 +400,8 @@ function assignHTML(where) {
 function bindAssign(root) {
   const b = root.querySelector(".aSet"); if (!b) return;
   const kinds = () => { const k = wkind(); return k === "vc" ? ["v", "c"] : [k]; };
-  b.onclick = async () => { const d = root.querySelector(".aDate").value; if (!d) return; const p = {}; sel.forEach((id) => (p[rootOf(id)] = d)); for (const k of kinds()) await setDates(HM.id, p, k); flash(b, "Đã ghi ✓"); };
-  root.querySelector(".aClr").onclick = async () => { const p = {}; sel.forEach((id) => (p[rootOf(id)] = null)); for (const k of kinds()) await setDates(HM.id, p, k); };
+  b.onclick = async () => { const d = root.querySelector(".aDate").value; if (!d) return; const p = {}; sel.forEach((id) => (p[keyOf(HM.id, id)] = d)); for (const k of kinds()) await setDates(HM.id, p, k); flash(b, "Đã ghi ✓"); };
+  root.querySelector(".aClr").onclick = async () => { const p = {}; sel.forEach((id) => (p[keyOf(HM.id, id)] = null)); for (const k of kinds()) await setDates(HM.id, p, k); };
 }
 function renderAside() {
   if (!HM) return;
@@ -637,8 +640,8 @@ async function exportExcel(e) {
   const t3 = [["Ngày", "Hạng mục", "Cấu kiện", "SL", "Tên", "BT (m3)", "VK (m2)", "CT (kg)", "Giá trị (đ)"], ...R.detail.map((r) => [fd(r.d), r.h.name, rowLabel(r.k), r.ids.size, Object.entries(r.c).map(([k, n]) => k + (n > 1 ? " x" + n : "")).join(", "), r3(r.bt), r3(r.vk), r3(r.ct), r0(r.gt)])];
   const s3 = X.utils.aoa_to_sheet(t3); s3["!cols"] = [{ wch: 11 }, { wch: 18 }, { wch: 20 }, { wch: 6 }, { wch: 50 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 }]; X.utils.book_append_sheet(wb, s3, "ChiTietKy");
   // DanhSach: ngày BT/VK/CT của mọi cấu kiện (bản sao lưu – nạp lại bằng "Nạp ngày từ file")
-  const t4 = [["Hạng mục", "ID", "Loại", "Tầng", "Tên", "Trục", "BT (m3)", "VK (m2)", "CT (kg)", "Ngày BT", "Ngày VK", "Ngày CT", "Mã hạng mục"]];
-  R.list.forEach((h) => { const D = DATES[h.id] || {}; KL[h.id].items.forEach((i) => { const r = rootOf(i.id); t4.push([h.name, i.id, LN[i.loai] || i.loai, tangName(i.tang), i.ten, i.truc, i.v || 0, r3(vkOf(i)), r3(ctOf(i)), fd((D.b || {})[r] || ""), fd((D.v || {})[r] || ""), fd((D.c || {})[r] || ""), h.id]); }); });
+  const t4 = [["Hạng mục", "ID", "Loại", "Tầng", "Tên", "Trục", "BT (m3)", "VK (m2)", "CT (kg)", "Ngày BT", "Ngày VK", "Ngày CT", "Mã hạng mục", "UID"]];
+  R.list.forEach((h) => { const D = DATES[h.id] || {}; KL[h.id].items.forEach((i) => { const r = keyOf(h.id, i.id); t4.push([h.name, i.id, LN[i.loai] || i.loai, tangName(i.tang), i.ten, i.truc, i.v || 0, r3(vkOf(i)), r3(ctOf(i)), fd((D.b || {})[r] || ""), fd((D.v || {})[r] || ""), fd((D.c || {})[r] || ""), h.id, String(i.id).includes(".") ? "" : (i.uid || "")]); }); });
   X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(t4), "DanhSach");
   X.writeFile(wb, `BaoCao_${(a > "0001" ? a : "dau").replace(/-/g, "")}_${(b < "9999" ? b : today()).replace(/-/g, "")}.xlsx`);
   if (btn) flash(btn, "Đã xuất ✓");
@@ -653,12 +656,16 @@ $("restFile").onchange = async () => {
     const wb = XLSX.read(await f.arrayBuffer(), { type: "array" }), ws = wb.Sheets.DanhSach;
     if (!ws) throw new Error("file không có sheet DanhSach (dùng file xuất từ nút Xuất Excel)");
     const all = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" }), hd = all[0].map((x) => String(x).trim());
-    const col = (n) => hd.indexOf(n), cHM = col("Mã hạng mục"), cName = col("Hạng mục"), cId = col("ID");
+    const col = (n) => hd.indexOf(n), cHM = col("Mã hạng mục"), cName = col("Hạng mục"), cId = col("ID"), cUid = col("UID");
     const cK = { b: col("Ngày BT") >= 0 ? col("Ngày BT") : col("Ngày đổ"), v: col("Ngày VK"), c: col("Ngày CT") };
-    const plan = {};
+    const plan = {}, hmOf = (r) => HMS.find((x) => x.id === r[cHM]) || HMS.find((x) => x.name === r[cName]);
+    for (const h of new Set(all.slice(1).map(hmOf).filter((h) => h && lvHM(h.id) >= 2))) await getKL(h);
     all.slice(1).forEach((r) => {
-      const h = HMS.find((x) => x.id === r[cHM]) || HMS.find((x) => x.name === r[cName]); if (!h || lvHM(h.id) < 2) return;
-      const id = String(r[cId]); if (!id || id.includes(".")) return;
+      const h = hmOf(r); if (!h || lvHM(h.id) < 2) return;
+      const id0 = String(r[cId]); if (!id0 || id0.includes(".")) return;
+      const by = KL[h.id].by, u = cUid >= 0 ? String(r[cUid]).trim() : "";
+      const it = u ? KL[h.id].items.find((x) => String(x.uid) === u) : by[id0];
+      if (!it) return; const id = keyOf(h.id, it.id);
       Object.entries(cK).forEach(([k, c]) => { if (c < 0) return; const m = String(r[c]).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (!m) return;
         const d = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; if (((DATES[h.id] || {})[k] || {})[id] === d) return;
         ((plan[h.id] = plan[h.id] || {})[k] = plan[h.id][k] || {})[id] = d; });
@@ -685,6 +692,7 @@ function parseWB(X, wb, name) {
   const items = rows("DANH_SACH").slice(4).filter((r) => r[0] !== null && r[0] !== "").map((r) => {
     const id = String(r[0]).trim(), sl = num(r[4]) || 1, g = GT[id], it = { id, loai: r[1] || "", tang: r[2] || "", ten: String(r[3] ?? "").trim(), sl: num(r[4]), dai: num(r[5]), rong: num(r[6]), cao: num(r[7]), cv: num(r[10]), dt: num(r[11]), v: num(r[12]), vkt: num(r[13]), vkd: num(r[14]), dot: typeof r[15] === "number" ? Math.trunc(r[15]) : (r[15] && !isNaN(+r[15]) ? +r[15] : null), mb: r[16] || "", k: poly(r[21]), h: poly(r[22]), truc: r[26] || "", cd: r[28] ?? null };
     if (!id.includes(".")) {
+      if (r[24] !== null && r[24] !== "") it.uid = String(r[24]).trim();
       const ct = g ? g.kg1 * sl : num(r[29]); if (ct) it.ct = Math.round(ct * 1000) / 1000;
       if (g) ["gl", "gb", "gv", "gc"].forEach((f) => { if (g[f]) it[f] = g[f]; });
     }
@@ -719,16 +727,41 @@ function importDlg(d, defName) {
   <p class="empty" style="margin:4px 0 0">${d.hasGT ? `Sheet GAN_THEP: cốt thép <b>${nf(ct, 0)} kg</b> · đơn giá BT có ở <b>${nPrice}/${nPar}</b> cấu kiện` : "Không có sheet GAN_THEP (chưa có thép, đơn giá) – chạy macro GanThep trong Excel nếu cần."}</p>
   <label for="hmName">Tên hạng mục</label><input type="text" id="hmName" list="hmNames" value="${esc(HMS.find((h) => h.file === d.file)?.name || defName)}">
   <datalist id="hmNames">${mine.map((h) => `<option value="${esc(h.name)}">`).join("")}</datalist>
-  <p class="empty" id="hmWarn"></p>
+  <p class="empty" id="hmWarn"></p><div id="cmp"></div>
   ${dots.length ? `<label>File còn cột Đợt cũ – nhập ngày đổ cho từng đợt để chuyển sang ngày (để trống nếu bỏ qua). Chỉ áp cho cấu kiện chưa có ngày.</label>${dots.map((x) => `<div class="dotrow"><span>Đợt ${x}</span><input type="date" data-dot="${x}"> <small class="empty">${d.items.filter((i) => i.dot === x && !String(i.id).includes(".")).length} cấu kiện</small></div>`).join("")}` : ""}
   <div class="acts"><button class="btn" id="dlgNo">Hủy</button><button class="btn pri" id="dlgOk">Lưu hạng mục</button></div>
   ${isOwner && HMS.length ? `<div class="hmlist"><b style="font-size:14px">Hạng mục đã có</b>${HMS.map((h) => `<div><span>${esc(h.name)} <small class="empty">${esc(h.file || "")}</small></span><button class="btn red" data-del="${esc(h.id)}">Xóa</button></div>`).join("")}</div>` : ""}
   </div></div>`;
-  let ok = false;
+  let ok = false, mig = null, cmpFor = null;
   const warn = () => { const n = $("hmName").value.trim(), ex = HMS.find((h) => h.name.toLowerCase() === n.toLowerCase());
     ok = !!n && (ex ? lvHM(ex.id) >= 3 : lvAll() >= 3);
-    $("hmWarn").textContent = !n ? "Nhập tên hạng mục." : ex ? (lvHM(ex.id) >= 3 ? "Trùng tên hạng mục đã có: sẽ thay khối lượng, thép, đơn giá & mặt bằng; giữ nguyên ngày đã nhập và hệ số (khớp theo ID)." : "Bạn không có quyền Quản trị hạng mục này.") : (lvAll() >= 3 ? "Sẽ tạo hạng mục mới." : "Chỉ chủ dự án / quản trị tất cả hạng mục mới tạo được hạng mục mới. Chọn tên hạng mục bạn quản trị.");
-    $("dlgOk").disabled = !ok; };
+    $("hmWarn").textContent = !n ? "Nhập tên hạng mục." : ex ? (lvHM(ex.id) >= 3 ? "Trùng tên hạng mục đã có: sẽ thay khối lượng, thép, đơn giá & mặt bằng; giữ ngày đã nhập (khớp theo UID) và hệ số." : "Bạn không có quyền Quản trị hạng mục này.") : (lvAll() >= 3 ? "Sẽ tạo hạng mục mới." : "Chỉ chủ dự án / quản trị tất cả hạng mục mới tạo được hạng mục mới. Chọn tên hạng mục bạn quản trị.");
+    $("dlgOk").disabled = !ok;
+    if (ok && ex) { if (cmpFor !== ex.id) compare(ex); } else { mig = null; cmpFor = null; $("cmp").innerHTML = ""; } };
+  // so sánh với dữ liệu đang có: giữ / thêm / mất cấu kiện, chuyển ngày sang khóa mới
+  async function compare(ex) {
+    cmpFor = ex.id; mig = null; $("dlgOk").disabled = true; $("cmp").innerHTML = `<p class="empty">Đang so sánh với dữ liệu đang có…</p>`;
+    try {
+      const oldItems = await getKL(ex); if (cmpFor !== ex.id) return;
+      const par = (l) => l.filter((i) => !String(i.id).includes(".")), oldP = par(oldItems), newP = par(d.items);
+      const oldHasUid = oldP.some((o) => o.uid), byU = {}, byI = {};
+      oldP.forEach((o) => { if (o.uid) byU[o.uid] = o; byI[o.id] = o; });
+      const pairs = [], used = new Set();
+      newP.forEach((n) => { const o = n.uid && oldHasUid ? byU[n.uid] : byI[n.id]; if (o && !used.has(o.id)) { used.add(o.id); pairs.push([o, n]); } });
+      const okey = (o) => ukey(o) || o.id, nkey = (n) => ukey(n) || n.id, D = DATES[ex.id] || {}, newD = { b: {}, v: {}, c: {} }, consumed = new Set();
+      ["b", "v", "c"].forEach((k) => { const src = D[k] || {};
+        pairs.forEach(([o, n]) => { consumed.add(okey(o)); if (src[okey(o)]) newD[k][nkey(n)] = src[okey(o)]; });
+        Object.keys(src).forEach((key) => { if (!consumed.has(key) && !(key in newD[k])) newD[k][key] = src[key]; }); });
+      const lost = oldP.filter((o) => !used.has(o.id)), lostDated = lost.filter((o) => ["b", "v", "c"].some((k) => (D[k] || {})[okey(o)]));
+      const changed = ["b", "v", "c"].some((k) => JSON.stringify(Object.entries(newD[k]).sort()) !== JSON.stringify(Object.entries(D[k] || {}).sort()));
+      mig = { ex, newD, changed };
+      $("cmp").innerHTML = `<div class="assign" style="margin-top:6px"><b>So với dữ liệu đang có</b> (khớp theo ${oldHasUid ? "UID" : "ID – lần đầu chuyển sang UID"}):<br>
+        giữ <b>${pairs.length}</b> · thêm mới <b>${newP.length - pairs.length}</b> · không còn trong file <b>${lost.length}</b>${lostDated.length ? ` · <b style="color:#c0392b">${lostDated.length} cấu kiện đã có ngày bị mất</b>` : ""}
+        ${lostDated.length ? `<div class="names">${lostDated.slice(0, 40).map((o) => esc(`${o.ten} (${o.truc || "ID " + o.id})`)).join(", ")}${lostDated.length > 40 ? "…" : ""}<br>Ngày của các cấu kiện này vẫn được lưu riêng nhưng không còn hiện. Kiểm tra lại file nếu không định xóa chúng.</div>` : ""}
+        ${!oldHasUid && newP.some((n) => n.uid) ? `<div class="names">Lần này ngày được chuyển từ khóa ID sang UID – hãy dùng đúng file đang dùng (chưa sửa) để chuyển chính xác.</div>` : ""}</div>`;
+      $("dlgOk").disabled = !ok;
+    } catch (e) { $("cmp").innerHTML = `<p class="empty">Không so sánh được: ${esc(e.message)}</p>`; $("dlgOk").disabled = !ok; }
+  }
   $("hmName").oninput = warn; warn();
   $("dlgNo").onclick = () => ($("ovl").innerHTML = "");
   $("ovl").querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
@@ -745,8 +778,12 @@ function importDlg(d, defName) {
       const { items, geo } = split(d);
       const meta = { id, name, file: d.file, order: old ? (old.order ?? 0) : HMS.length, nItems: items.length, at: new Date().toISOString(), by: ME };
       await saveHM(meta, items, geo, old);
+      if (old && mig && mig.ex.id === old.id && mig.changed) {
+        DATES[id] = mig.newD;
+        await fs.setDoc(fs.doc(db, "ngay", id), { d: mig.newD.b, dv: mig.newD.v, dc: mig.newD.c, at: new Date().toISOString(), by: ME });
+      }
       const have = (DATES[id] || {}).b || {}, p = {};
-      items.forEach((i) => { if (!String(i.id).includes(".") && i.dot != null && dd[i.dot] && !have[i.id]) p[i.id] = dd[i.dot]; });
+      items.forEach((i) => { const k = ukey(i) || i.id; if (!String(i.id).includes(".") && i.dot != null && dd[i.dot] && !have[k]) p[k] = dd[i.dot]; });
       if (Object.keys(p).length) await setDates(id, p, "b");
       $("ovl").innerHTML = ""; try { localStorage.setItem("ttbt_hm", id); } catch (e) {}
       HM = null; if (!HMS.find((h) => h.id === id)) setNote("Đã lưu – đang tải hạng mục…");
