@@ -122,6 +122,8 @@ body.full .fsbar{display:flex}
 #note{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#111827;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;z-index:25;max-width:90vw;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 #note:empty{display:none}
 body.full .bar1{display:none!important}
+.hatch{background-image:repeating-linear-gradient(45deg,transparent 0 4px,#fff 4px 7px)!important}
+.pctl{display:inline-flex;align-items:center;gap:4px;font-size:14px;color:var(--mute)}.pctl input{width:72px;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:2px 6px;font-size:16px;background:var(--paper);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -193,6 +195,6 @@ body.full .bar1{display:none!important}
 </main>
 <div id="ovl"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script type="module" src="./app.js?v=8"></script>
+<script type="module" src="./app.js?v=9"></script>
 </body>
 </html>

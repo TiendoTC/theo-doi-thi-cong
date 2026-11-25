@@ -95,7 +95,7 @@ function syncNgay() {
   const clean = (o) => { const r = {}; Object.keys(o || {}).forEach((x) => { if (o[x]) r[x] = o[x]; }); return r; };
   ids.forEach((k) => {
     if (!subs.ngay[k]) subs.ngay[k] = fs.onSnapshot(fs.doc(db, "ngay", k), (d) => {
-      const x = d.exists() ? d.data() : {}; DATES[k] = { b: clean(x.d), v: clean(x.dv), c: clean(x.dc) }; refreshAll(); }, () => {});
+      const x = d.exists() ? d.data() : {}; DATES[k] = { b: clean(x.d), v: clean(x.dv), c: clean(x.dc), p: clean(x.dp) }; refreshAll(); }, () => {});
     if (!subs.hcfg[k]) subs.hcfg[k] = fs.onSnapshot(fs.doc(db, "hmcfg", k), (d) => { HMCFG[k] = d.exists() ? d.data() : {}; refreshAll(); renderModeUI(); }, () => {});
   });
 }
@@ -136,10 +136,10 @@ async function delHM(meta) {
   await fs.deleteDoc(fs.doc(db, "hmcfg", meta.id)).catch(() => {});
   await fs.deleteDoc(fs.doc(db, "hm", meta.id));
 }
-const FIELD = { b: "d", v: "dv", c: "dc" };
+const FIELD = { b: "d", v: "dv", c: "dc", p: "dp" };   // dp: lịch sử đổ BT từng phần "ngày:%;ngày:%"
 // patch: {id: ngày | null}; kind: b | v | c
 async function setDates(hmId, patch, kind = "b") {
-  const cur = DATES[hmId] || (DATES[hmId] = { b: {}, v: {}, c: {} }), loc = { ...(cur[kind] || {}) };
+  const cur = DATES[hmId] || (DATES[hmId] = { b: {}, v: {}, c: {}, p: {} }), loc = { ...(cur[kind] || {}) };
   Object.entries(patch).forEach(([k, v]) => v ? (loc[k] = v) : delete loc[k]); cur[kind] = loc; refreshAll();
   const d = {}; Object.entries(patch).forEach(([k, v]) => (d[k] = v || fs.deleteField()));
   try { await fs.setDoc(fs.doc(db, "ngay", hmId), { [FIELD[kind]]: d, at: new Date().toISOString(), by: ME }, { merge: true }); }
@@ -158,6 +158,21 @@ function dateK(hm, id, k) {
   const own = (D[k] || {})[r] || null;            // ngày riêng: giữ nếu sớm hơn ngày đổ BT (đã báo ở kỳ trước thì ở lại kỳ đó)
   return own && bt ? (own < bt ? own : bt) : (own || bt);
 }
+// ---- %HT: đổ BT từng phần (ô sàn…). Lịch sử lưu ở dp[key] = "2026-11-20:40;2026-11-24:70"; 100% = ngày BT (d) ----
+const parseDP = (s) => String(s || "").split(";").map((x) => x.split(":")).filter((x) => x[0] && +x[1] > 0).map(([d, p]) => [d, Math.min(100, +p)]);
+const fmtDP = (h) => h.slice().sort((x, y) => x[0] < y[0] ? -1 : 1).map(([d, p]) => d + ":" + p).join(";");
+function btHist(hm, id) { const D = DATES[hm] || {}, r = keyOf(hm, id), h = parseDP((D.p || {})[r]), b = (D.b || {})[r]; if (b) h.push([b, 100]); return h.sort((x, y) => x[0] < y[0] ? -1 : 1); }
+function fracB(hm, id, x) { let f = 0; btHist(hm, id).forEach(([d, p]) => { if (d <= x && p > f) f = p; }); return f / 100; }
+// phần đã xong (0…1) của công tác k tính đến ngày x (VK, CT: ngày riêng → 100%, không thì theo %BT)
+function fracK(hm, id, k, x) {
+  if (k === "b" || cfgOf(hm).mode === "A") return fracB(hm, id, x);
+  if (k === "vc") return Math.min(fracK(hm, id, "v", x), fracK(hm, id, "c", x));
+  const own = ownDate(hm, id, k); return own && own <= x ? 1 : fracB(hm, id, x);
+}
+// các ngày làm thay đổi tiến độ của công tác k
+function evDates(hm, id, k) { const s = new Set(btHist(hm, id).map((x) => x[0])); if (k !== "b") ["v", "c"].forEach((x) => { const o = ownDate(hm, id, x); if (o) s.add(o); }); return [...s].sort(); }
+const curPct = (hm, id) => Math.round(fracB(hm, id, "9999-12-31") * 100);
+const pA = () => { const a = per().a; return a > "0001" ? addD(a, -1) : "0000-00-00"; };   // ngày trước kỳ
 const ownDate = (hm, id, k) => ((DATES[hm] || {})[k] || {})[keyOf(hm, id)] || null;
 // khóa lưu ngày: UID cố định (cột Y của DANH_SACH) nếu có, không thì ID cấu kiện gốc
 const ukey = (it) => it && it.uid ? "u" + it.uid : null;
@@ -172,14 +187,15 @@ const ctOf = (it) => it.ct || 0;
 let HM = null, ITEMS = [], BYID = {}, G = null, P = null, vb = null, view = "vMap", WORK = "tq";
 try { WORK = localStorage.getItem("ttbt_work") || "tq"; } catch (e) {}
 const sel = new Set(); let multi = false, boxMode = false, listN = 300;
-const WN = { b: "Bê tông", v: "Ván khuôn", c: "Cốt thép", vc: "VK + CT", tq: "Tiến độ tổng hợp" };
+const WN = { b: "Bê tông", v: "Ván khuôn", c: "Cốt thép", vc: "VK + CT", tq: "Tiến độ tổng hợp", p: "đổ BT từng phần" };
 const work = () => WORK;                                                   // chế độ tô màu đang xem
 const wkind = () => (HM && cfgOf(HM.id).mode === "B" && WORK !== "tq") ? WORK : "b";   // công tác được ghi ngày
 // Tiến độ tổng hợp (tính đến cuối kỳ): 0 chưa làm · 1 có VK · 2 có CT · 3 xong VK+CT · 4 đã đổ BT; d = ngày quyết định trạng thái
-const STG = [["Chưa làm", "var(--none)"], ["Có ván khuôn", "#FFC000"], ["Có cốt thép", "#E03C31"], ["Xong VK + CT, chờ đổ BT", "#7030A0"], ["Đã đổ bê tông", "#00B050"]];
+const STG = [["Chưa làm", "var(--none)"], ["Có ván khuôn", "#FFC000"], ["Có cốt thép", "#E03C31"], ["Xong VK + CT, chờ đổ BT", "#7030A0"], ["Đã đổ bê tông 100%", "#00B050"], ["Đang đổ BT (một phần)", "#00B050"]];
 function stageOf(hm, id) {
   const { b } = per(), ok = (d) => d && d <= b ? d : null;
   const bt = ok(dateK(hm, id, "b")); if (bt) return { s: 4, d: bt };
+  const fb = fracB(hm, id, b); if (fb > 0) { const last = btHist(hm, id).filter((x) => x[0] <= b).pop(); return { s: 5, d: last[0], p: Math.round(fb * 100) }; }
   const v = ok(dateK(hm, id, "v")), c = ok(dateK(hm, id, "c"));
   if (v && c) return { s: 3, d: v > c ? v : c };
   if (v) return { s: 1, d: v }; if (c) return { s: 2, d: c };
@@ -260,7 +276,8 @@ function showPlan(id) {
   for (let i = 0; i < Gd.length; i += 5) { const s = `M${Gd[i]} ${-Gd[i + 1]}L${Gd[i + 2]} ${-Gd[i + 3]}`; if (Gd[i + 4]) da += s; else dg += s; }
   const txt = P.W.map((w) => `<text x="${w[0]}" y="${-w[1]}" font-size="${w[3]}" text-anchor="middle" dominant-baseline="middle"${w[2] ? ` transform="rotate(${-w[2]} ${w[0]} ${-w[1]})"` : ""}>${esc(w[4])}</text>`).join("");
   const ck = P._its.map((it) => { const sh = G.shapes[it.id]; return `<path class="ck" data-id="${esc(it.id)}" d="${sh[0].map(ring).join("") + (sh[1] || []).map(ring).join("")}"><title>${esc(it.ten)} ${esc(it.truc)}</title></path>`; }).join("");
-  $("map").innerHTML = `<path class="gd" d="${dg}"/><path class="ax" d="${da}"/><path class="bg" d="${dl_}"/>${txt}<g id="cks">${ck}</g><g id="lbs"></g>`;
+  const hs = (P._B.w / 220).toFixed(1), pat = (id, c) => `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${hs}" height="${hs}" patternTransform="rotate(45)"><rect width="${hs}" height="${hs}" style="fill:${c}"/><rect width="${(hs * .42).toFixed(1)}" height="${hs}" style="fill:#fff"/></pattern>`;
+  $("map").innerHTML = `<defs>${pat("hD", "var(--done)")}${pat("hN", "var(--now)")}</defs><path class="gd" d="${dg}"/><path class="ax" d="${da}"/><path class="bg" d="${dl_}"/>${txt}<g id="cks">${ck}</g><g id="lbs"></g>`;
   renderTitle(); paint(); fit(); renderAside();
 }
 function paint() {
@@ -268,8 +285,9 @@ function paint() {
   const tq = work() === "tq", { a } = per();
   $("cks").querySelectorAll(".ck").forEach((el) => {
     const id = el.dataset.id;
-    if (tq) { const g = stageOf(HM.id, id); el.style.fill = STG[g.s][1]; el.style.fillOpacity = g.s ? .85 : 1; el.classList.toggle("inp", !!(g.d && g.d >= a)); }
-    else { const st = status(dW(id)); el.style.fill = COL[st]; el.style.fillOpacity = st ? .85 : 1; el.classList.remove("inp"); }
+    if (tq) { const g = stageOf(HM.id, id); el.style.fill = g.s === 5 ? "url(#hD)" : STG[g.s][1]; el.style.fillOpacity = g.s ? .85 : 1; el.classList.toggle("inp", !!(g.d && g.d >= a)); }
+    else { const k = work(), fS = fracK(HM.id, id, k, pA()), fE = fracK(HM.id, id, k, per().b), st = fE <= 0 ? 0 : fE > fS ? 2 : 1, part = fE > 0 && fE < 1;
+      el.style.fill = part ? (st === 2 ? "url(#hN)" : "url(#hD)") : COL[st]; el.style.fillOpacity = st ? .85 : 1; el.classList.remove("inp"); }
     el.classList.toggle("sel", sel.has(id));
   });
   labels();
@@ -279,7 +297,8 @@ function labels() {
   const W = P._B.w;
   g.innerHTML = P._its.map((it) => {
     const b = it._b, bw = b.x1 - b.x0, bh = b.y1 - b.y0, tall = bh > bw * 1.8, d = dW(it.id);
-    const t = m === "ten" ? it.ten : m === "id" ? it.id : m === "truc" ? it.truc : (d && (work() === "tq" || status(d)) ? fds(d) : "");
+    const pc = curPct(HM.id, it.id), part = pc > 0 && pc < 100;
+    const t = m === "ten" ? it.ten + (part ? ` ${pc}%` : "") : m === "id" ? it.id : m === "truc" ? it.truc : (d && (work() === "tq" || status(d)) ? fds(d) + (part ? ` ${pc}%` : "") : part ? `${pc}%` : "");
     if (!t) return "";
     const fsz = Math.max(W / 450, Math.min(W / 110, (tall ? bw : bh) * .55, ((tall ? bh : bw) * 1.6) / String(t).length));
     const cx = (b.x0 + b.x1) / 2, cy = -(b.y0 + b.y1) / 2;
@@ -386,22 +405,32 @@ function assignHTML(where) {
   const ids = [...sel], its = ids.map((i) => BYID[i]).filter(Boolean), s = sum(withSubs(ids)), w = canEdit(), B = cfgOf(HM.id).mode === "B", k = wkind();
   if (!its.length) return `<div class="assign"><p class="empty" style="margin:0">${where === "map" ? "Bấm một cấu kiện (Ctrl/Shift hoặc “Chọn nhiều” để chọn thêm, “Quét chọn” để khoanh vùng)" : "Đánh dấu hộp kiểm ở các dòng"}${w ? " rồi nhập ngày." : ". Bạn chỉ có quyền xem hạng mục này."}</p></div>`;
   const ds = [...new Set(its.map((i) => dateK(HM.id, i.id, k) || ""))];
+  const pcs = [...new Set(its.map((i) => curPct(HM.id, i.id)))], partTxt = k === "b" && pcs.some((p) => p > 0 && p < 100) ? ` · đã đổ <b>${pcs.length > 1 ? pcs.map((p) => p + "%").join(", ") : pcs[0] + "%"}</b>` : "";
   const cnt = {}; its.forEach((i) => (cnt[i.ten] = (cnt[i.ten] || 0) + 1));
   const def = ds.length === 1 && ds[0] ? ds[0] : ($("dTo").value && $("dTo").value <= today() ? $("dTo").value : today());
-  const own = k === "b" ? ds.some(Boolean) : its.some((i) => (k === "vc" ? ["v", "c"] : [k]).some((x) => ownDate(HM.id, i.id, x)));
+  const own = k === "b" ? ds.some(Boolean) || pcs.some((p) => p > 0) : its.some((i) => (k === "vc" ? ["v", "c"] : [k]).some((x) => ownDate(HM.id, i.id, x)));
   const lab = k === "b" ? (B ? "ngày đổ BT" : "ngày đổ BT (VK, CT theo BT)") : `ngày ${WN[k]}`;
   const hint = !B && ["v", "c", "vc"].includes(work()) ? `<div class="names">Chế độ A: chỉ ghi ngày đổ BT – VK, CT tự tính xong cùng ngày. Muốn ghi ngày VK/CT riêng: Hệ số & chế độ → B.</div>`
     : B && k !== "b" ? `<div class="names">Chưa ghi ngày riêng thì ${WN[k]} tính xong cùng ngày đổ BT.</div>`
     : B && work() === "tq" ? `<div class="names">Đang ghi ngày đổ BT. Muốn ghi ngày VK, CT riêng: chọn Hiển thị → Ván khuôn / Cốt thép / Xong VK + CT.</div>` : "";
   return `<div class="assign"><div style="display:flex;gap:14px;flex-wrap:wrap"><div><div class="empty">Đã chọn</div><div class="big">${its.length}</div></div><div><div class="empty">Bê tông</div><div class="big">${nf(s.v)} m³</div></div><div><div class="empty">Ván khuôn</div><div class="big">${nf(s.vk, 2)} m²</div></div><div><div class="empty">Cốt thép</div><div class="big">${nf(s.ct, 0)} kg</div></div><div><div class="empty">Giá trị</div><div class="big">${money(s.gt)} đ</div></div></div>
-  <div class="names">${Object.entries(cnt).map(([x, n]) => esc(x) + (n > 1 ? " ×" + n : "")).join(", ")} · ${esc(lab)}: ${ds.length > 1 ? "<b>nhiều ngày khác nhau</b>" : ds[0] ? "<b>" + fd(ds[0]) + "</b>" : "<b>chưa có</b>"}</div>${hint}
-  ${w ? `<div class="acts"><input type="date" class="aDate" value="${def}" aria-label="Ngày"><button class="btn pri aSet">Ghi ${esc(lab.replace(" (VK, CT theo BT)", ""))}</button><button class="btn aClr"${own ? "" : " disabled"}>${k === "b" ? "Xóa ngày BT" : "Xóa ngày riêng"}</button></div>` : ""}</div>`;
+  <div class="names">${Object.entries(cnt).map(([x, n]) => esc(x) + (n > 1 ? " ×" + n : "")).join(", ")} · ${esc(lab)}: ${ds.length > 1 ? "<b>nhiều ngày khác nhau</b>" : ds[0] ? "<b>" + fd(ds[0]) + "</b>" : "<b>chưa có</b>"}${partTxt}</div>${hint}
+  ${w ? `<div class="acts"><input type="date" class="aDate" value="${def}" aria-label="Ngày">${k === "b" ? `<label class="pctl" title="% hoàn thành lũy kế đến ngày này (ô sàn đổ nhiều lần). 100 = xong">%HT <input type="number" class="aPct" min="1" max="100" step="1" value="${pcs.length === 1 && pcs[0] > 0 && pcs[0] < 100 ? pcs[0] : 100}"></label>` : ""}<button class="btn pri aSet">Ghi ${esc(lab.replace(" (VK, CT theo BT)", ""))}</button><button class="btn aClr"${own ? "" : " disabled"}>${k === "b" ? "Xóa ngày BT" : "Xóa ngày riêng"}</button></div>` : ""}</div>`;
 }
 function bindAssign(root) {
   const b = root.querySelector(".aSet"); if (!b) return;
   const kinds = () => { const k = wkind(); return k === "vc" ? ["v", "c"] : [k]; };
-  b.onclick = async () => { const d = root.querySelector(".aDate").value; if (!d) return; const p = {}; sel.forEach((id) => (p[keyOf(HM.id, id)] = d)); for (const k of kinds()) await setDates(HM.id, p, k); flash(b, "Đã ghi ✓"); };
-  root.querySelector(".aClr").onclick = async () => { const p = {}; sel.forEach((id) => (p[keyOf(HM.id, id)] = null)); for (const k of kinds()) await setDates(HM.id, p, k); };
+  b.onclick = async () => {
+    const d = root.querySelector(".aDate").value; if (!d) return;
+    const pi = root.querySelector(".aPct"), pc = pi ? Math.max(1, Math.min(100, Math.round(+pi.value || 100))) : 100;
+    if (kinds()[0] === "b" && pc < 100) {        // đổ một phần: thêm vào lịch sử, bỏ ngày xong 100%
+      const ph = {}, pb = {}, D = DATES[HM.id] || {};
+      sel.forEach((id) => { const key = keyOf(HM.id, id), h = parseDP((D.p || {})[key]).filter((x) => x[0] !== d); h.push([d, pc]); ph[key] = fmtDP(h); if ((D.b || {})[key]) pb[key] = null; });
+      await setDates(HM.id, ph, "p"); if (Object.keys(pb).length) await setDates(HM.id, pb, "b");
+    } else { const p = {}; sel.forEach((id) => (p[keyOf(HM.id, id)] = d)); for (const k of kinds()) await setDates(HM.id, p, k); }
+    flash(b, "Đã ghi ✓");
+  };
+  root.querySelector(".aClr").onclick = async () => { const p = {}; sel.forEach((id) => (p[keyOf(HM.id, id)] = null)); for (const k of kinds()) await setDates(HM.id, p, k); if (kinds()[0] === "b") await setDates(HM.id, p, "p"); };
 }
 function renderAside() {
   if (!HM) return;
@@ -409,14 +438,18 @@ function renderAside() {
   if (work() === "tq") return renderAsideTQ();
   const k = work(), cols = QCOL[k], all = ITEMS.filter((i) => (BYID[rootOf(i.id)] || {}).mb === P.id);
   const mk = () => ({ n: 0, q: cols.map(() => 0), gt: 0 }), g = [mk(), mk(), mk()], T = mk(), { a, b } = per();
-  all.forEach((i) => { const st = status(dateK(HM.id, i.id, k)), pr = priceOf(HM.id, i), one = String(i.id).includes(".") ? 0 : 1;
-    [g[st], T].forEach((o) => { o.n += one; cols.forEach(([c], j) => { const q = QTY[c](i); o.q[j] += q; o.gt += q * pr[c]; }); }); });
-  const lab = ["Chưa xong", "Xong trước kỳ", "Xong trong kỳ"];
+  const xA = pA();
+  all.forEach((i) => { const pr = priceOf(HM.id, i), one = String(i.id).includes(".") ? 0 : 1, fS = fracK(HM.id, i.id, k, xA), fE = fracK(HM.id, i.id, k, b);
+    const st = fE <= 0 ? 0 : fE > fS ? 2 : 1; g[st].n += one; T.n += one;
+    cols.forEach(([c], j) => { const q = QTY[c](i), v = q * pr[c], s0 = fracK(HM.id, i.id, c, xA), s1 = fracK(HM.id, i.id, c, b);
+      T.q[j] += q; T.gt += v; g[1].q[j] += q * s0; g[1].gt += v * s0; g[2].q[j] += q * (s1 - s0); g[2].gt += v * (s1 - s0); g[0].q[j] += q * (1 - s1); g[0].gt += v * (1 - s1); }); });
+  const lab = ["Chưa xong", "Xong trước kỳ", "Làm trong kỳ"];
   let h = `<h2>${esc(planLabel(P))}</h2><p class="empty" style="margin:0">${esc(HM.name)} · ${P._its.length} cấu kiện trên mặt bằng · màu: <b>${k === "b" ? "Đã đổ bê tông" : k === "vc" ? "Xong VK + CT" : WN[k]}</b></p>
   <h3>Chọn${canEdit() ? " và nhập ngày" : " cấu kiện"}</h3>${assignHTML("map")}`;
   const one = sel.size === 1 && BYID[[...sel][0]];
   if (one) { const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it);
-    const dt = (x) => { const e = dateK(HM.id, it.id, x), o = x === "b" ? e : ownDate(HM.id, it.id, x); return e ? fd(e) + (x !== "b" && e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : "–"; };
+    const dt = (x) => { if (x === "b") { const h = btHist(HM.id, it.id); return h.length ? h.map(([d, p]) => `${fd(d)}: <b>${p}%</b>`).join(" → ") : "–"; }
+      const e = dateK(HM.id, it.id, x), o = ownDate(HM.id, it.id, x); return e ? fd(e) + (e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : (o ? fd(o) : curPct(HM.id, it.id) > 0 ? "<small class=\"empty\">theo %BT</small>" : "–"); };
     h += `<h3>Chi tiết cấu kiện</h3><div class="kv"><span>ID / trục</span><span>${esc(it.id)} · ${esc(it.truc)}</span><span>Loại</span><span>${esc(LN[it.loai] || it.loai)} ${esc(tangName(it.tang))}</span>
     <span>Dài × rộng × cao</span><span>${[it.dai, it.rong, it.cao].map((v) => v == null ? "–" : nf(v, 2)).join(" × ")} m</span>
     <span>Thể tích BT</span><span><b>${nf(it.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(vkOf(it), 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(ctOf(it), 1)} kg × ${money(p.c)}</span>
@@ -427,14 +460,15 @@ function renderAside() {
   ${[1, 2, 0].map((st) => `<tr><td><span class="sw" style="background:${COL[st]}"></span>${lab[st]}</td><td class="n">${g[st].n}</td>${qc(g[st])}<td class="n">${money(g[st].gt)}</td></tr>`).join("")}
   <tr><td><b>Cộng</b></td><td class="n"><b>${T.n}</b></td>${qc(T)}<td class="n"><b>${money(T.gt)}</b></td></tr></table>
   <div class="meter"><i style="width:${(g[1].n / (T.n || 1)) * 100}%;background:var(--done)"></i><i style="width:${(g[2].n / (T.n || 1)) * 100}%;background:var(--now)"></i></div>
-  <p class="empty">Lũy kế đến cuối kỳ: ${nf(((g[1].gt + g[2].gt) / (T.gt || 1)) * 100, 1)}% giá trị · ${g[1].n + g[2].n}/${T.n} cấu kiện${T.gt ? "" : " · chưa có đơn giá (sheet GAN_THEP)"}</p>`;
+  <p class="empty">Lũy kế đến cuối kỳ: ${nf(((g[1].gt + g[2].gt) / (T.gt || 1)) * 100, 1)}% giá trị · ${g[1].n + g[2].n}/${T.n} cấu kiện. Ô gạch chéo = đổ một phần (%HT &lt; 100), khối lượng tính theo %.${T.gt ? "" : " · chưa có đơn giá (sheet GAN_THEP)"}</p>`;
   $("aside").innerHTML = h; bindAssign($("aside"));
 }
 
 function itemDetail() {
   const one = sel.size === 1 && BYID[[...sel][0]]; if (!one) return "";
   const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it);
-  const dt = (x) => { const e = dateK(HM.id, it.id, x), o = x === "b" ? e : ownDate(HM.id, it.id, x); return e ? fd(e) + (x !== "b" && e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : "–"; };
+  const dt = (x) => { if (x === "b") { const h = btHist(HM.id, it.id); return h.length ? h.map(([d, p]) => `${fd(d)}: <b>${p}%</b>`).join(" → ") : "–"; }
+      const e = dateK(HM.id, it.id, x), o = ownDate(HM.id, it.id, x); return e ? fd(e) + (e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : (o ? fd(o) : curPct(HM.id, it.id) > 0 ? "<small class=\"empty\">theo %BT</small>" : "–"); };
   return `<h3>Chi tiết cấu kiện</h3><div class="kv"><span>ID / trục</span><span>${esc(it.id)} · ${esc(it.truc)}</span><span>Loại</span><span>${esc(LN[it.loai] || it.loai)} ${esc(tangName(it.tang))}</span>
     <span>Dài × rộng × cao</span><span>${[it.dai, it.rong, it.cao].map((v) => v == null ? "–" : nf(v, 2)).join(" × ")} m</span>
     <span>Thể tích BT</span><span><b>${nf(it.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(vkOf(it), 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(ctOf(it), 1)} kg × ${money(p.c)}</span>
@@ -446,16 +480,16 @@ function renderAsideTQ() {
   const g = STG.map(() => ({ n: 0, ni: 0, gt: 0 })), T = { n: 0, ni: 0, gt: 0, tot: 0 };
   all.forEach((i) => {
     const one = String(i.id).includes(".") ? 0 : 1, pr = priceOf(HM.id, i), st = stageOf(HM.id, i.id);
-    let done = 0; ["b", "v", "c"].forEach((c) => { const d = dateK(HM.id, i.id, c), q = QTY[c](i) * pr[c]; T.tot += q; if (d && d <= b) done += q; });
+    let done = 0; ["b", "v", "c"].forEach((c) => { const q = QTY[c](i) * pr[c]; T.tot += q; done += q * fracK(HM.id, i.id, c, b); });
     const inp = st.d && st.d >= a ? one : 0;
     [g[st.s], T].forEach((o) => { o.n += one; o.ni += inp; o.gt += done; });
   });
   let h = `<h2>${esc(planLabel(P))}</h2><p class="empty" style="margin:0">${esc(HM.name)} · ${P._its.length} cấu kiện trên mặt bằng · màu: <b>Tiến độ tổng hợp</b> đến ${b < "9999" ? fd(b) : "nay"}</p>
   <h3>Chọn${canEdit() ? " và nhập ngày" : " cấu kiện"}</h3>${assignHTML("map")}${itemDetail()}
   <h3>Trạng thái đến ${b < "9999" ? fd(b) : "nay"} · viền đậm = làm trong kỳ ${a > "0001" ? fd(a) : ""}–${b < "9999" ? fd(b) : ""}</h3><table class="leg"><tr><td></td><td class="n">SL</td><td class="n">Trong kỳ</td><td class="n">Giá trị đã làm (đ)</td></tr>
-  ${[4, 3, 2, 1, 0].map((s) => `<tr><td><span class="sw" style="background:${STG[s][1]}"></span>${STG[s][0]}</td><td class="n">${g[s].n}</td><td class="n">${g[s].ni || ""}</td><td class="n">${money(g[s].gt)}</td></tr>`).join("")}
+  ${[4, 5, 3, 2, 1, 0].map((s) => `<tr><td><span class="sw${s === 5 ? " hatch" : ""}" style="background-color:${STG[s][1]}"></span>${STG[s][0]}</td><td class="n">${g[s].n}</td><td class="n">${g[s].ni || ""}</td><td class="n">${money(g[s].gt)}</td></tr>`).join("")}
   <tr><td><b>Cộng</b></td><td class="n"><b>${T.n}</b></td><td class="n"><b>${T.ni}</b></td><td class="n"><b>${money(T.gt)}</b></td></tr></table>
-  <div class="meter">${[4, 3, 2, 1].map((s) => `<i style="width:${(g[s].n / (T.n || 1)) * 100}%;background:${STG[s][1]}"></i>`).join("")}</div>
+  <div class="meter">${[4, 5, 3, 2, 1].map((s) => `<i class="${s === 5 ? "hatch" : ""}" style="width:${(g[s].n / (T.n || 1)) * 100}%;background-color:${STG[s][1]}"></i>`).join("")}</div>
   <p class="empty">Giá trị đã làm ${money(T.gt)} / ${money(T.tot)} đ (${nf((T.gt / (T.tot || 1)) * 100, 1)}%)${T.tot ? "" : " · chưa có đơn giá (sheet GAN_THEP)"}</p>`;
   $("aside").innerHTML = h; bindAssign($("aside"));
 }
@@ -497,10 +531,11 @@ function repRows(hm) {
     const key = rowKey(it), r = rows[key] || (rows[key] = Object.fromEntries([["k", key], ...RF.map((f) => [f, 0])]));
     if (!String(it.id).includes(".")) r.n++;
     const p = priceOf(hm, it);
+    const xA = pA(), xB = per().b;
     [["b", "bt"], ["v", "vk"], ["c", "ct"]].forEach(([k, f]) => {
-      const q = QTY[k](it), val = q * p[k], st = status(dateK(hm, it.id, k));
+      const q = QTY[k](it), val = q * p[k], s0 = fracK(hm, it.id, k, xA), s1 = fracK(hm, it.id, k, xB);
       r[f] += q; r.gt += val;
-      if (st === 1) { r[f + "P"] += q; r.gtP += val; } else if (st === 2) { r[f + "I"] += q; r["gI" + k] += val; }
+      r[f + "P"] += q * s0; r.gtP += val * s0; r[f + "I"] += q * (s1 - s0); r["gI" + k] += val * (s1 - s0);
     });
   });
   return Object.values(rows).sort((x, y) => rowSort(x.k, y.k));
@@ -523,10 +558,11 @@ async function renderRep() {
   const det = {};
   list.forEach((h) => KL[h.id].items.forEach((it) => {
     const p = priceOf(h.id, it);
-    ["b", "v", "c"].forEach((k) => { const d = dateK(h.id, it.id, k); if (!d || d < a || d > b) return;
+    ["b", "v", "c"].forEach((k) => evDates(h.id, it.id, k).forEach((d) => { if (d < a || d > b) return;
+      const inc = fracK(h.id, it.id, k, d) - fracK(h.id, it.id, k, addD(d, -1)); if (inc <= 0) return;
       const key = d + "|" + h.id + "|" + rowKey(it), r = det[key] || (det[key] = { d, h, k: rowKey(it), bt: 0, vk: 0, ct: 0, gt: 0, c: {}, ids: new Set() });
-      const q = QTY[k](it); r[{ b: "bt", v: "vk", c: "ct" }[k]] += q; r.gt += q * p[k];
-      if (!String(it.id).includes(".") && !r.ids.has(it.id)) { r.ids.add(it.id); r.c[it.ten] = (r.c[it.ten] || 0) + 1; } });
+      const q = QTY[k](it) * inc; r[{ b: "bt", v: "vk", c: "ct" }[k]] += q; r.gt += q * p[k];
+      if (!String(it.id).includes(".") && !r.ids.has(it.id)) { r.ids.add(it.id); const pc = k === "b" && inc < 1 ? ` (${Math.round(inc * 100)}%)` : ""; r.c[it.ten + pc] = (r.c[it.ten + pc] || 0) + 1; } }));
   }));
   const detail = Object.values(det).sort((x, y) => x.d < y.d ? -1 : x.d > y.d ? 1 : (x.h.order ?? 0) - (y.h.order ?? 0) || rowSort(x.k, y.k));
   REP = { groups, T, detail, list };
@@ -570,7 +606,9 @@ function renderList() {
   if (view !== "vList" || !HM) return;
   const f = listItems(), allOn = f.length && f.every((i) => sel.has(i.id)), B = cfgOf(HM.id).mode === "B";
   const agg = {}; ITEMS.forEach((i) => { const r = rootOf(i.id), p = priceOf(HM.id, i); const o = agg[r] || (agg[r] = { v: 0, vk: 0, ct: 0, gt: 0 }); o.v += i.v || 0; o.vk += vkOf(i); o.ct += ctOf(i); o.gt += (i.v || 0) * p.b + vkOf(i) * p.v + ctOf(i) * p.c; });
-  const dcell = (id, k) => { const d = dateK(HM.id, id, k); if (!d) return ""; const fb = k !== "b" && d !== ownDate(HM.id, id, k); return `<span class="sw" style="background:${COL[status(d)]}"></span>${fd(d)}${fb ? ' <small class="empty">BT</small>' : ""}`; };
+  const dcell = (id, k) => { const d = dateK(HM.id, id, k), pc = curPct(HM.id, id);
+    if (k === "b" && pc > 0 && pc < 100) { const last = btHist(HM.id, id).pop(); return `<span class="sw hatch" style="background-color:var(--done)"></span>${pc}% · ${fd(last[0])}`; }
+    if (!d) return ""; const fb = k !== "b" && d !== ownDate(HM.id, id, k); return `<span class="sw" style="background:${COL[status(d)]}"></span>${fd(d)}${fb ? ' <small class="empty">BT</small>' : ""}`; };
   $("listTbl").innerHTML = `<thead><tr><th class="c"><input type="checkbox" id="chkAll" ${allOn ? "checked" : ""} aria-label="Chọn tất cả dòng đang lọc"></th><th>ID</th><th>Cấu kiện</th><th>Tên</th><th>Trục</th><th>Ngày BT</th>${B ? "<th>Ngày VK</th><th>Ngày CT</th>" : ""}<th>BT m³</th><th>VK m²</th><th>CT kg</th><th>Giá trị (đ)</th><th>Mặt bằng</th></tr></thead><tbody>${f.slice(0, listN).map((i) => { const on = sel.has(i.id), o = agg[i.id];
     return `<tr class="${on ? "chk" : ""}" data-id="${esc(i.id)}"><td class="c"><input type="checkbox" ${on ? "checked" : ""} aria-label="Chọn ${esc(i.ten)}"></td><td>${esc(i.id)}</td><td>${esc(rowLabel(rowKey(i)))}</td><td>${esc(i.ten)}</td><td>${esc(i.truc)}</td><td>${dcell(i.id, "b")}</td>${B ? `<td>${dcell(i.id, "v")}</td><td>${dcell(i.id, "c")}</td>` : ""}<td class="n">${nf(o.v)}</td><td class="n">${nf(o.vk, 2)}</td><td class="n">${nf(o.ct, 0)}</td><td class="n">${money(o.gt)}</td><td>${i.mb && G && G.shapes[i.id] ? `<button class="edit" data-go="${esc(i.id)}">Xem</button>` : ""}</td></tr>`; }).join("")}</tbody>`;
   $("more").hidden = f.length <= listN; $("more").textContent = `Hiện thêm (còn ${f.length - listN} dòng)`;
@@ -640,8 +678,8 @@ async function exportExcel(e) {
   const t3 = [["Ngày", "Hạng mục", "Cấu kiện", "SL", "Tên", "BT (m3)", "VK (m2)", "CT (kg)", "Giá trị (đ)"], ...R.detail.map((r) => [fd(r.d), r.h.name, rowLabel(r.k), r.ids.size, Object.entries(r.c).map(([k, n]) => k + (n > 1 ? " x" + n : "")).join(", "), r3(r.bt), r3(r.vk), r3(r.ct), r0(r.gt)])];
   const s3 = X.utils.aoa_to_sheet(t3); s3["!cols"] = [{ wch: 11 }, { wch: 18 }, { wch: 20 }, { wch: 6 }, { wch: 50 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 }]; X.utils.book_append_sheet(wb, s3, "ChiTietKy");
   // DanhSach: ngày BT/VK/CT của mọi cấu kiện (bản sao lưu – nạp lại bằng "Nạp ngày từ file")
-  const t4 = [["Hạng mục", "ID", "Loại", "Tầng", "Tên", "Trục", "BT (m3)", "VK (m2)", "CT (kg)", "Ngày BT", "Ngày VK", "Ngày CT", "Mã hạng mục", "UID"]];
-  R.list.forEach((h) => { const D = DATES[h.id] || {}; KL[h.id].items.forEach((i) => { const r = keyOf(h.id, i.id); t4.push([h.name, i.id, LN[i.loai] || i.loai, tangName(i.tang), i.ten, i.truc, i.v || 0, r3(vkOf(i)), r3(ctOf(i)), fd((D.b || {})[r] || ""), fd((D.v || {})[r] || ""), fd((D.c || {})[r] || ""), h.id, String(i.id).includes(".") ? "" : (i.uid || "")]); }); });
+  const t4 = [["Hạng mục", "ID", "Loại", "Tầng", "Tên", "Trục", "BT (m3)", "VK (m2)", "CT (kg)", "Ngày BT", "Ngày VK", "Ngày CT", "Mã hạng mục", "UID", "Đổ BT từng phần (ngày:%)"]];
+  R.list.forEach((h) => { const D = DATES[h.id] || {}; KL[h.id].items.forEach((i) => { const r = keyOf(h.id, i.id); t4.push([h.name, i.id, LN[i.loai] || i.loai, tangName(i.tang), i.ten, i.truc, i.v || 0, r3(vkOf(i)), r3(ctOf(i)), fd((D.b || {})[r] || ""), fd((D.v || {})[r] || ""), fd((D.c || {})[r] || ""), h.id, String(i.id).includes(".") ? "" : (i.uid || ""), String(i.id).includes(".") ? "" : parseDP((D.p || {})[r]).map(([d, p]) => fd(d) + ":" + p).join("; ")]); }); });
   X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(t4), "DanhSach");
   X.writeFile(wb, `BaoCao_${(a > "0001" ? a : "dau").replace(/-/g, "")}_${(b < "9999" ? b : today()).replace(/-/g, "")}.xlsx`);
   if (btn) flash(btn, "Đã xuất ✓");
@@ -657,7 +695,7 @@ $("restFile").onchange = async () => {
     if (!ws) throw new Error("file không có sheet DanhSach (dùng file xuất từ nút Xuất Excel)");
     const all = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" }), hd = all[0].map((x) => String(x).trim());
     const col = (n) => hd.indexOf(n), cHM = col("Mã hạng mục"), cName = col("Hạng mục"), cId = col("ID"), cUid = col("UID");
-    const cK = { b: col("Ngày BT") >= 0 ? col("Ngày BT") : col("Ngày đổ"), v: col("Ngày VK"), c: col("Ngày CT") };
+    const cK = { b: col("Ngày BT") >= 0 ? col("Ngày BT") : col("Ngày đổ"), v: col("Ngày VK"), c: col("Ngày CT") }, cP = col("Đổ BT từng phần (ngày:%)");
     const plan = {}, hmOf = (r) => HMS.find((x) => x.id === r[cHM]) || HMS.find((x) => x.name === r[cName]);
     for (const h of new Set(all.slice(1).map(hmOf).filter((h) => h && lvHM(h.id) >= 2))) await getKL(h);
     all.slice(1).forEach((r) => {
@@ -669,6 +707,10 @@ $("restFile").onchange = async () => {
       Object.entries(cK).forEach(([k, c]) => { if (c < 0) return; const m = String(r[c]).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (!m) return;
         const d = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; if (((DATES[h.id] || {})[k] || {})[id] === d) return;
         ((plan[h.id] = plan[h.id] || {})[k] = plan[h.id][k] || {})[id] = d; });
+      if (cP >= 0 && String(r[cP]).trim()) {
+        const hst = String(r[cP]).split(";").map((x) => x.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s*:\s*(\d+(?:[.,]\d+)?)$/)).filter(Boolean).map((m) => [`${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`, Math.round(+m[4].replace(",", "."))]);
+        const v = fmtDP(hst); if (v && v !== fmtDP(parseDP(((DATES[h.id] || {}).p || {})[id]))) ((plan[h.id] = plan[h.id] || {}).p = plan[h.id].p || {})[id] = v;
+      }
     });
     const ks = Object.keys(plan);
     $("ovl").innerHTML = `<div class="ov"><div class="dlg"><h2>Nạp ngày từ file</h2><p class="empty">${esc(f.name)}</p>
@@ -748,12 +790,12 @@ function importDlg(d, defName) {
       oldP.forEach((o) => { if (o.uid) byU[o.uid] = o; byI[o.id] = o; });
       const pairs = [], used = new Set();
       newP.forEach((n) => { const o = n.uid && oldHasUid ? byU[n.uid] : byI[n.id]; if (o && !used.has(o.id)) { used.add(o.id); pairs.push([o, n]); } });
-      const okey = (o) => ukey(o) || o.id, nkey = (n) => ukey(n) || n.id, D = DATES[ex.id] || {}, newD = { b: {}, v: {}, c: {} }, consumed = new Set();
-      ["b", "v", "c"].forEach((k) => { const src = D[k] || {};
+      const okey = (o) => ukey(o) || o.id, nkey = (n) => ukey(n) || n.id, D = DATES[ex.id] || {}, newD = { b: {}, v: {}, c: {}, p: {} }, consumed = new Set();
+      ["b", "v", "c", "p"].forEach((k) => { const src = D[k] || {};
         pairs.forEach(([o, n]) => { consumed.add(okey(o)); if (src[okey(o)]) newD[k][nkey(n)] = src[okey(o)]; });
         Object.keys(src).forEach((key) => { if (!consumed.has(key) && !(key in newD[k])) newD[k][key] = src[key]; }); });
-      const lost = oldP.filter((o) => !used.has(o.id)), lostDated = lost.filter((o) => ["b", "v", "c"].some((k) => (D[k] || {})[okey(o)]));
-      const changed = ["b", "v", "c"].some((k) => JSON.stringify(Object.entries(newD[k]).sort()) !== JSON.stringify(Object.entries(D[k] || {}).sort()));
+      const lost = oldP.filter((o) => !used.has(o.id)), lostDated = lost.filter((o) => ["b", "v", "c", "p"].some((k) => (D[k] || {})[okey(o)]));
+      const changed = ["b", "v", "c", "p"].some((k) => JSON.stringify(Object.entries(newD[k]).sort()) !== JSON.stringify(Object.entries(D[k] || {}).sort()));
       mig = { ex, newD, changed };
       $("cmp").innerHTML = `<div class="assign" style="margin-top:6px"><b>So với dữ liệu đang có</b> (khớp theo ${oldHasUid ? "UID" : "ID – lần đầu chuyển sang UID"}):<br>
         giữ <b>${pairs.length}</b> · thêm mới <b>${newP.length - pairs.length}</b> · không còn trong file <b>${lost.length}</b>${lostDated.length ? ` · <b style="color:#c0392b">${lostDated.length} cấu kiện đã có ngày bị mất</b>` : ""}
@@ -780,7 +822,7 @@ function importDlg(d, defName) {
       await saveHM(meta, items, geo, old);
       if (old && mig && mig.ex.id === old.id && mig.changed) {
         DATES[id] = mig.newD;
-        await fs.setDoc(fs.doc(db, "ngay", id), { d: mig.newD.b, dv: mig.newD.v, dc: mig.newD.c, at: new Date().toISOString(), by: ME });
+        await fs.setDoc(fs.doc(db, "ngay", id), { d: mig.newD.b, dv: mig.newD.v, dc: mig.newD.c, dp: mig.newD.p, at: new Date().toISOString(), by: ME });
       }
       const have = (DATES[id] || {}).b || {}, p = {};
       items.forEach((i) => { const k = ukey(i) || i.id; if (!String(i.id).includes(".") && i.dot != null && dd[i.dot] && !have[k]) p[k] = dd[i.dot]; });
