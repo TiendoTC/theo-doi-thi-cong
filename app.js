@@ -447,14 +447,14 @@ function renderAside() {
   let h = `<h2>${esc(planLabel(P))}</h2><p class="empty" style="margin:0">${esc(HM.name)} · ${P._its.length} cấu kiện trên mặt bằng · màu: <b>${k === "b" ? "Đã đổ bê tông" : k === "vc" ? "Xong VK + CT" : WN[k]}</b></p>
   <h3>Chọn${canEdit() ? " và nhập ngày" : " cấu kiện"}</h3>${assignHTML("map")}`;
   const one = sel.size === 1 && BYID[[...sel][0]];
-  if (one) { const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it);
+  if (one) { const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it); const net = sum(withSubs([it.id]));   // đã cộng/trừ phần phụ x.1, x.2…
     const dt = (x) => { if (x === "b") { const h = btHist(HM.id, it.id); return h.length ? h.map(([d, p]) => `${fd(d)}: <b>${p}%</b>`).join(" → ") : "–"; }
       const e = dateK(HM.id, it.id, x), o = ownDate(HM.id, it.id, x); return e ? fd(e) + (e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : (o ? fd(o) : curPct(HM.id, it.id) > 0 ? "<small class=\"empty\">theo %BT</small>" : "–"); };
     h += `<h3>Chi tiết cấu kiện</h3><div class="kv"><span>ID / trục</span><span>${esc(it.id)} · ${esc(it.truc)}</span><span>Loại</span><span>${esc(LN[it.loai] || it.loai)} ${esc(tangName(it.tang))}</span>
     <span>Dài × rộng × cao</span><span>${[it.dai, it.rong, it.cao].map((v) => v == null ? "–" : nf(v, 2)).join(" × ")} m</span>
-    <span>Thể tích BT</span><span><b>${nf(it.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(vkOf(it), 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(ctOf(it), 1)} kg × ${money(p.c)}</span>
+    <span>Thể tích BT</span><span><b>${nf(net.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(net.vk, 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(net.ct, 1)} kg × ${money(p.c)}</span>
     ${["b", "v", "c"].map((x) => `<span>Ngày ${WN[x].toLowerCase()}</span><span>${dt(x)}</span>`).join("")}
-    ${sb.map((x) => `<span>${esc(x.id)} ${esc(x.ten)}</span><span>${nf(x.v)} m³</span>`).join("")}</div>`; }
+</div>`; }
   const qc = (o) => cols.map(([, , d], j) => `<td class="n">${nf(o.q[j], d)}</td>`).join("");
   h += `<h3>Kỳ ${a > "0001" ? fd(a) : "đầu"} → ${b < "9999" ? fd(b) : "nay"} · mặt bằng này</h3><table class="leg"><tr><td></td><td class="n">SL</td>${cols.map(([, u]) => `<td class="n">${u}</td>`).join("")}<td class="n">Giá trị (đ)</td></tr>
   ${[1, 2, 0].map((st) => `<tr><td><span class="sw" style="background:${COL[st]}"></span>${lab[st]}</td><td class="n">${g[st].n}</td>${qc(g[st])}<td class="n">${money(g[st].gt)}</td></tr>`).join("")}
@@ -466,14 +466,14 @@ function renderAside() {
 
 function itemDetail() {
   const one = sel.size === 1 && BYID[[...sel][0]]; if (!one) return "";
-  const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it);
+  const it = one, sb = ITEMS.filter((x) => rootOf(x.id) === it.id && x.id !== it.id), p = priceOf(HM.id, it); const net = sum(withSubs([it.id]));   // đã cộng/trừ phần phụ x.1, x.2…
   const dt = (x) => { if (x === "b") { const h = btHist(HM.id, it.id); return h.length ? h.map(([d, p]) => `${fd(d)}: <b>${p}%</b>`).join(" → ") : "–"; }
       const e = dateK(HM.id, it.id, x), o = ownDate(HM.id, it.id, x); return e ? fd(e) + (e !== o ? " <small class=\"empty\">(theo BT)</small>" : "") : (o ? fd(o) : curPct(HM.id, it.id) > 0 ? "<small class=\"empty\">theo %BT</small>" : "–"); };
   return `<h3>Chi tiết cấu kiện</h3><div class="kv"><span>ID / trục</span><span>${esc(it.id)} · ${esc(it.truc)}</span><span>Loại</span><span>${esc(LN[it.loai] || it.loai)} ${esc(tangName(it.tang))}</span>
     <span>Dài × rộng × cao</span><span>${[it.dai, it.rong, it.cao].map((v) => v == null ? "–" : nf(v, 2)).join(" × ")} m</span>
-    <span>Thể tích BT</span><span><b>${nf(it.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(vkOf(it), 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(ctOf(it), 1)} kg × ${money(p.c)}</span>
+    <span>Thể tích BT</span><span><b>${nf(net.v)} m³</b> × ${money(p.b)}</span><span>Ván khuôn</span><span>${nf(net.vk, 2)} m² × ${money(p.v)}</span><span>Cốt thép</span><span>${nf(net.ct, 1)} kg × ${money(p.c)}</span>
     ${["b", "v", "c"].map((x) => `<span>Ngày ${WN[x].toLowerCase()}</span><span>${dt(x)}</span>`).join("")}
-    ${sb.map((x) => `<span>${esc(x.id)} ${esc(x.ten)}</span><span>${nf(x.v)} m³</span>`).join("")}</div>`;
+</div>`;
 }
 function renderAsideTQ() {
   const all = ITEMS.filter((i) => (BYID[rootOf(i.id)] || {}).mb === P.id), { a, b } = per();
